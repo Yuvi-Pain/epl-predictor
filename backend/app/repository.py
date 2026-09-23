@@ -10,7 +10,7 @@ import pandas as pd
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncConnection
 
-from app.models import Match, Team
+from app.models import DataVersion, Match, Team
 
 # Nullable integers: unplayed matches have no goals or shots.
 _NULLABLE_INT_COLUMNS = ("home_goals", "away_goals", "home_shots_on_target", "away_shots_on_target")
@@ -57,3 +57,7 @@ class Repository:
     async def load_matches(self) -> pd.DataFrame:
         """See the module-level `load_matches`."""
         return await load_matches(self._conn)
+
+    async def data_version(self) -> int:
+        """The counter the history loader bumps whenever teams or matches change."""
+        return (await self._conn.execute(select(DataVersion.version))).scalar_one()
