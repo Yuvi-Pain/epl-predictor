@@ -14,6 +14,7 @@ KNOWN_TEAMS: dict[str, list[str]] = {
     "Burnley": [],
     "Cardiff City": ["Cardiff"],
     "Chelsea": [],
+    "Coventry City": ["Coventry"],
     "Crystal Palace": [],
     "Everton": [],
     "Fulham": [],
