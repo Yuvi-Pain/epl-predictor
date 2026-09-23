@@ -11,7 +11,9 @@ DATABASE_URL = os.environ["DATABASE_URL"]
 REDIS_URL = os.environ["REDIS_URL"]
 
 engine = create_async_engine(DATABASE_URL, pool_pre_ping=True)
-redis_client = Redis.from_url(REDIS_URL)
+# Short timeouts: Redis only holds a cache, so if it hangs we would rather give
+# up after half a second and build the response from Postgres.
+redis_client = Redis.from_url(REDIS_URL, socket_connect_timeout=0.5, socket_timeout=0.5)
 
 # Predictable constraint names, so migrations can refer to them by name.
 NAMING_CONVENTION = {

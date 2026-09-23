@@ -1,4 +1,9 @@
-"""Prediction endpoints: teams, live predictions, season backtest, model info."""
+"""Prediction endpoints: teams, live predictions, season backtest, model info.
+
+/teams, /predict and /matches are cached in Redis (see app/cache.py). Their
+keys include the data version from Postgres and, where the model is used, the
+model's version and training time.
+"""
 
 import asyncio
 from collections.abc import AsyncIterator
@@ -7,8 +12,9 @@ from typing import Annotated, Any
 
 import numpy as np
 import pandas as pd
-from fastapi import APIRouter, Depends, HTTPException, Query, Request, status
+from fastapi import APIRouter, Depends, HTTPException, Query, Request, Response, status
 
+from app.cache import MATCHES_TTL, PREDICT_TTL, TEAMS_TTL, ResponseCache, cache_key, get_cache
 from app.db import engine
 from app.match_model import MODEL_LABEL, OUTCOMES
 from app.predictor import Predictor
@@ -59,6 +65,16 @@ def get_predictor(request: Request) -> Predictor:
 
 RepoDep = Annotated[Repository, Depends(get_repository)]
 PredictorDep = Annotated[Predictor, Depends(get_predictor)]
+CacheDep = Annotated[ResponseCache, Depends(get_cache)]
+CACHE_HEADER_DOC = {
+    "X-Cache": {"description": "HIT if served from Redis, MISS if built for this request."}
+}
+
+
+def _model_tag(predictor: Predictor) -> str:
+    # The training time as well as the version: retraining with --force keeps
+    # the version but produces a different model.
+    return f"m{predictor.version}@{predictor.trained_at}"
 
 
 def _team(row: TeamRow) -> Team:
@@ -78,39 +94,9 @@ def _nan_to_none(values: pd.Series) -> dict[str, float | None]:
     return {k: None if pd.isna(v) else float(v) for k, v in values.items()}
 
 
-@router.get("/teams", response_model=TeamList, tags=["teams"])
-async def list_teams(repo: RepoDep) -> TeamList:
-    """Every team in the database, alphabetically. Use the ids with /predict."""
-    return TeamList(teams=[_team(t) for t in await repo.list_teams()])
-
-
-@router.get(
-    "/predict",
-    response_model=PredictResponse,
-    tags=["predictions"],
-    responses={
-        400: {"model": ErrorResponse, "description": "Home and away are the same team."},
-        404: {"model": ErrorResponse, "description": "A team id does not exist."},
-        **MODEL_UNAVAILABLE,
-    },
-)
-async def predict(
-    repo: RepoDep,
-    predictor: PredictorDep,
-    home: Annotated[int, Query(description="Home team id, from /teams.")],
-    away: Annotated[int, Query(description="Away team id, from /teams.")],
-    as_of: Annotated[
-        date | None,
-        Query(description="Predict as if the match were on this date. Defaults to today."),
-    ] = None,
+async def _build_predict(
+    repo: Repository, predictor: Predictor, home: int, away: int, as_of: date
 ) -> PredictResponse:
-    """Win/draw/loss probabilities for a match between two teams.
-
-    Features are built from results before `as_of` only, with the same code
-    used in training.
-    """
-    if home == away:
-        raise HTTPException(status.HTTP_400_BAD_REQUEST, detail="home and away must be different teams")
     teams = await repo.get_teams([home, away])
     missing = [t for t in (home, away) if t not in teams]
     if missing:
@@ -118,7 +104,6 @@ async def predict(
             status.HTTP_404_NOT_FOUND, detail=f"unknown team id(s): {', '.join(map(str, missing))}"
         )
 
-    as_of = as_of or date.today()
     history = await repo.load_matches()
     # Feature building is CPU-bound pandas; run it off the event loop.
     features = await asyncio.to_thread(predictor.match_features, history, home, away, as_of)
@@ -133,28 +118,7 @@ async def predict(
     )
 
 
-@router.get(
-    "/matches",
-    response_model=MatchList,
-    tags=["predictions"],
-    responses={
-        404: {"model": ErrorResponse, "description": "No matches for that season."},
-        **MODEL_UNAVAILABLE,
-    },
-)
-async def list_matches(
-    repo: RepoDep,
-    predictor: PredictorDep,
-    season: Annotated[
-        str | None,
-        Query(pattern=r"^\d{4}-\d{2}$", description='e.g. "2026-27". Defaults to the latest season.'),
-    ] = None,
-) -> MatchList:
-    """Played matches in a season, oldest first, each with the model's pre-match prediction.
-
-    Each prediction uses only results from before that match's date, exactly as
-    in training, so it is what the model would have said beforehand.
-    """
+async def _build_matches(repo: Repository, predictor: Predictor, season: str | None) -> MatchList:
     matches = await repo.load_matches()
     season = season or (str(matches["season"].iloc[-1]) if not matches.empty else None)
     if season is None or not (matches["season"] == season).any():
@@ -187,6 +151,99 @@ async def list_matches(
         model_version=predictor.version,
         model_split=predictor.split_of(season),
         matches=results,
+    )
+
+
+# In every cached endpoint the data version is read before any data, so a
+# response is never stored under a newer version than the data it was built
+# from (at worst, newer data lands under an older key that nobody reads again).
+
+
+@router.get(
+    "/teams",
+    response_model=TeamList,
+    tags=["teams"],
+    responses={200: {"headers": CACHE_HEADER_DOC}},
+)
+async def list_teams(repo: RepoDep, cache: CacheDep) -> Response:
+    """Every team in the database, alphabetically. Use the ids with /predict."""
+
+    async def build() -> TeamList:
+        return TeamList(teams=[_team(t) for t in await repo.list_teams()])
+
+    key = cache_key("teams", f"d{await repo.data_version()}")
+    return await cache.get_or_build(key, TEAMS_TTL, build)
+
+
+@router.get(
+    "/predict",
+    response_model=PredictResponse,
+    tags=["predictions"],
+    responses={
+        200: {"headers": CACHE_HEADER_DOC},
+        400: {"model": ErrorResponse, "description": "Home and away are the same team."},
+        404: {"model": ErrorResponse, "description": "A team id does not exist."},
+        **MODEL_UNAVAILABLE,
+    },
+)
+async def predict(
+    repo: RepoDep,
+    predictor: PredictorDep,
+    cache: CacheDep,
+    home: Annotated[int, Query(description="Home team id, from /teams.")],
+    away: Annotated[int, Query(description="Away team id, from /teams.")],
+    as_of: Annotated[
+        date | None,
+        Query(description="Predict as if the match were on this date. Defaults to today."),
+    ] = None,
+) -> Response:
+    """Win/draw/loss probabilities for a match between two teams.
+
+    Features are built from results before `as_of` only, with the same code
+    used in training.
+    """
+    if home == away:
+        raise HTTPException(status.HTTP_400_BAD_REQUEST, detail="home and away must be different teams")
+    # Resolve the default before building the key, so "today" is cached per day.
+    as_of = as_of or date.today()
+    data_version = await repo.data_version()
+    key = cache_key(
+        "predict", _model_tag(predictor), f"d{data_version}", home, away, as_of.isoformat()
+    )
+    return await cache.get_or_build(
+        key, PREDICT_TTL, lambda: _build_predict(repo, predictor, home, away, as_of)
+    )
+
+
+@router.get(
+    "/matches",
+    response_model=MatchList,
+    tags=["predictions"],
+    responses={
+        200: {"headers": CACHE_HEADER_DOC},
+        404: {"model": ErrorResponse, "description": "No matches for that season."},
+        **MODEL_UNAVAILABLE,
+    },
+)
+async def list_matches(
+    repo: RepoDep,
+    predictor: PredictorDep,
+    cache: CacheDep,
+    season: Annotated[
+        str | None,
+        Query(pattern=r"^\d{4}-\d{2}$", description='e.g. "2026-27". Defaults to the latest season.'),
+    ] = None,
+) -> Response:
+    """Played matches in a season, oldest first, each with the model's pre-match prediction.
+
+    Each prediction uses only results from before that match's date, exactly as
+    in training, so it is what the model would have said beforehand.
+    """
+    # "latest" is safe to cache: which season is latest can only change with the data version.
+    data_version = await repo.data_version()
+    key = cache_key("matches", _model_tag(predictor), f"d{data_version}", season or "latest")
+    return await cache.get_or_build(
+        key, MATCHES_TTL, lambda: _build_matches(repo, predictor, season)
     )
 
 

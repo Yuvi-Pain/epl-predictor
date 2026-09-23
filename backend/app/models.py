@@ -3,6 +3,7 @@
 from datetime import date
 
 from sqlalchemy import (
+    BigInteger,
     CheckConstraint,
     Date,
     Double,
@@ -73,3 +74,17 @@ class Match(Base):
 
     home_team: Mapped[Team] = relationship(foreign_keys=[home_team_id])
     away_team: Mapped[Team] = relationship(foreign_keys=[away_team_id])
+
+
+class DataVersion(Base):
+    """A counter bumped whenever the history loader changes teams or matches.
+
+    Exactly one row (id 1). The API puts the counter in its cache keys, so a
+    bump makes every cached response built from older data unreachable.
+    """
+
+    __tablename__ = "data_version"
+    __table_args__ = (CheckConstraint("id = 1", name="single_row"),)
+
+    id: Mapped[int] = mapped_column(SmallInteger, primary_key=True)
+    version: Mapped[int] = mapped_column(BigInteger)

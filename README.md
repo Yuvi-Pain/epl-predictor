@@ -84,6 +84,32 @@ Errors: `400` if home and away are the same team, `404` for an unknown team id o
 
 Live predictions build features with the same `build_features` function used in training: the hypothetical match is added to the history and featurised alongside it. Elo settings and the form window are read from the model file, not the code defaults.
 
+## Response caching (Redis)
+
+`/teams`, `/predict` and `/matches` are cached in Redis using cache-aside: look in Redis first; on a miss, build the response from Postgres and the model, store it with a TTL, and return it. Each response has an `X-Cache: HIT` or `X-Cache: MISS` header:
+
+```bash
+curl -si "localhost:8000/predict?home=1&away=17" | grep -i x-cache
+```
+
+**Keys include versions, so nothing is ever deleted.** A key looks like `epl:v1:predict:mv1@<trained_at>:d7:1:17:2026-10-04`:
+
+- `mv1@<trained_at>` is the loaded model. Training a new version, or retraining with `--force`, changes it.
+- `d7` is the **data version**, a counter in the `data_version` table. `load_history` bumps it in the same transaction as the match writes, but only when a team or match was actually inserted or updated.
+- After that come the request parameters. For `/predict`, a missing `as_of` is replaced with today's date before the key is built, so "today" gets a new key each day.
+
+When the data or model changes, requests look up keys that don't exist yet. They miss and are rebuilt from the new data. Old entries are never read again and expire on their TTL. Errors (400/404) are never cached.
+
+| Endpoint | TTL | Why |
+|----------|-----|-----|
+| `/teams` | 24 h | Tiny and almost never changes (teams are only added for a new season). The data version already covers changes. |
+| `/matches` | 6 h | The most expensive response (features for every match since 2015), with about 12 possible keys. Keeping it long is cheap. |
+| `/predict` | 1 h | Many possible keys (team pairs × dates), each fairly cheap to rebuild. A short TTL keeps memory use small while still covering the repeat requests around a match day. |
+
+Correctness never depends on the TTLs: the versions in the key do that. TTLs only decide how long unused entries take up memory. Redis is also capped at 128 MB with LRU eviction (see `docker-compose.yml`).
+
+**If Redis is down,** the API keeps answering, just without the cache (`X-Cache: MISS`). It logs one `Redis unavailable` warning and doesn't try Redis again for 30 seconds, so the outage doesn't add a connection timeout to every request. `/health` still reports Redis as down.
+
 ## Layout
 
 ```

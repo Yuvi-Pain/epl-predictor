@@ -2,138 +2,22 @@
 
 The database is replaced by an in-memory FakeRepository and the model by
 StubModel, which returns fixed probabilities and records what it was given.
-Feature building runs for real on the fake matches.
+Feature building runs for real on the fake matches. Fixtures are in conftest.py;
+caching is tested in test_cache.py.
 """
 
-from collections.abc import Iterator
 from datetime import date
 from pathlib import Path
 from typing import Any
 
 import joblib
-import numpy as np
-import pandas as pd
 import pytest
 from fastapi.testclient import TestClient
 
 from app import main
-from app.api import get_predictor, get_repository
-from app.features import FEATURE_COLUMNS, EloConfig
-from app.match_model import MODEL_LABEL, OUTCOMES
-from app.predictor import Predictor
-from app.repository import TeamRow
-
-TEAMS = [TeamRow(1, "Arsenal"), TeamRow(2, "Chelsea"), TeamRow(3, "Liverpool"), TeamRow(4, "Everton")]
-# Away win, draw, home win: the stub always favours the home side.
-STUB_PROBA = [0.2, 0.3, 0.5]
-
-
-class StubModel:
-    """Stands in for the scikit-learn pipeline. Module-level so it can be pickled."""
-
-    def __init__(self) -> None:
-        self.calls: list[pd.DataFrame] = []
-
-    def predict_proba(self, X: pd.DataFrame) -> np.ndarray:
-        self.calls.append(X)
-        return np.tile(STUB_PROBA, (len(X), 1))
-
-
-def match(
-    id: int, season: str, day: date, home: int, away: int, hg: int | None, ag: int | None
-) -> dict[str, Any]:
-    return {
-        "id": id,
-        "season": season,
-        "match_date": day,
-        "home_team_id": home,
-        "away_team_id": away,
-        "home_goals": hg,
-        "away_goals": ag,
-        "home_shots_on_target": None if hg is None else hg + 3,
-        "away_shots_on_target": None if ag is None else ag + 2,
-    }
-
-
-def make_matches(*extra: dict[str, Any]) -> pd.DataFrame:
-    rows = [
-        match(1, "2025-26", date(2025, 8, 16), 1, 2, 2, 0),
-        match(2, "2025-26", date(2025, 8, 16), 3, 4, 1, 1),
-        match(3, "2025-26", date(2025, 8, 23), 2, 3, 0, 1),
-        match(4, "2025-26", date(2025, 8, 23), 4, 1, 2, 2),
-        match(5, "2026-27", date(2026, 8, 15), 1, 3, 3, 1),  # home win
-        match(6, "2026-27", date(2026, 8, 15), 2, 4, 0, 2),  # away win
-        match(7, "2026-27", date(2026, 8, 22), 3, 2, 1, 1),  # draw
-        *extra,
-    ]
-    df = pd.DataFrame(rows)
-    for col in ("home_goals", "away_goals", "home_shots_on_target", "away_shots_on_target"):
-        df[col] = df[col].astype("Int16")
-    return df
-
-
-class FakeRepository:
-    def __init__(self, matches: pd.DataFrame) -> None:
-        self.matches = matches
-
-    async def list_teams(self) -> list[TeamRow]:
-        return sorted(TEAMS, key=lambda t: t.name)
-
-    async def get_teams(self, team_ids: list[int]) -> dict[int, TeamRow]:
-        return {t.id: t for t in TEAMS if t.id in team_ids}
-
-    async def load_matches(self) -> pd.DataFrame:
-        return self.matches.copy()
-
-
-def metrics(accuracy: float) -> dict[str, float]:
-    return {"accuracy": accuracy, "log_loss": 1.0, "brier": 0.6}
-
-
-def make_bundle(model: Any) -> dict[str, Any]:
-    """Shaped like what scripts/train_model.py saves."""
-    split = {MODEL_LABEL: metrics(0.5), "always home win": metrics(0.45)}
-    return {
-        "version": "vtest",
-        "trained_at": "2026-09-01T12:00:00+00:00",
-        "model": model,
-        "feature_columns": list(FEATURE_COLUMNS),
-        "classes": list(OUTCOMES),
-        "elo_config": EloConfig(),
-        "form_window": 5,
-        "train_seasons": ["2023-24"],
-        "validation_season": "2024-25",
-        "test_season": "2025-26",
-        "metrics": {"validation": split, "test": split},
-    }
-
-
-@pytest.fixture
-def model() -> StubModel:
-    return StubModel()
-
-
-@pytest.fixture
-def repo() -> FakeRepository:
-    return FakeRepository(make_matches())
-
-
-@pytest.fixture
-def client(model: StubModel, repo: FakeRepository) -> Iterator[TestClient]:
-    predictor = Predictor.from_bundle(make_bundle(model))
-    main.app.dependency_overrides[get_repository] = lambda: repo
-    main.app.dependency_overrides[get_predictor] = lambda: predictor
-    yield TestClient(main.app)  # no `with`: the startup model load is tested separately
-    main.app.dependency_overrides.clear()
-
-
-@pytest.fixture
-def client_without_model(repo: FakeRepository, monkeypatch: pytest.MonkeyPatch) -> Iterator[TestClient]:
-    monkeypatch.setattr(main.app.state, "predictor", None, raising=False)
-    monkeypatch.setattr(main.app.state, "model_error", None, raising=False)
-    main.app.dependency_overrides[get_repository] = lambda: repo
-    yield TestClient(main.app)
-    main.app.dependency_overrides.clear()
+from app.api import get_repository
+from app.features import FEATURE_COLUMNS
+from fakes import FakeRepository, StubModel, make_bundle, make_matches, match, metrics
 
 
 # --- /teams ------------------------------------------------------------------------
@@ -308,13 +192,10 @@ def test_startup_loads_the_model_once(
     real_load = joblib.load
     monkeypatch.setattr("app.predictor.joblib.load", lambda p: loads.append(p) or real_load(p))
     main.app.dependency_overrides[get_repository] = lambda: repo
-    try:
-        with TestClient(main.app) as c:
-            assert c.get("/model").json()["version"] == "vtest"
-            for _ in range(3):
-                assert c.get("/predict", params={"home": 1, "away": 2}).status_code == 200
-    finally:
-        main.app.dependency_overrides.clear()
+    with TestClient(main.app) as c:
+        assert c.get("/model").json()["version"] == "vtest"
+        for _ in range(3):
+            assert c.get("/predict", params={"home": 1, "away": 2}).status_code == 200
     assert loads == [path]
 
 

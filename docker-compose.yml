@@ -12,6 +12,9 @@ services:
 
   redis:
     image: redis:7
+    # Redis only holds the API's response cache, so cap its memory and let it
+    # evict the least recently used entries rather than refuse writes.
+    command: ["redis-server", "--maxmemory", "128mb", "--maxmemory-policy", "allkeys-lru"]
     healthcheck:
       test: ["CMD", "redis-cli", "ping"]
       interval: 5s
