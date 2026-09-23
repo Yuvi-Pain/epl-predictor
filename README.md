@@ -57,6 +57,18 @@ It ends with a per-season table of match and goal counts; every season should sh
 
 If it stops with `Unknown team names`, a data source used a spelling we haven't seen. Add it to `backend/app/teams.py` and rerun.
 
+## Train the baseline model
+
+After loading history, train a match outcome model (home win / draw / away win):
+
+```bash
+docker compose exec backend python -m scripts.train_model
+```
+
+It builds pre-match features from matches played on earlier dates only: Elo ratings, and average points, goals and shots on target over each team's last 5 matches. It then fits a multinomial logistic regression. Seasons are split by time: train on 2015-16 to 2023-24, choose the regularisation strength on 2024-25, test on 2025-26. The script prints accuracy, log loss and Brier score for the model and three baselines: always home win, training-set outcome rates, and Bet365's odds with the margin removed.
+
+The model is saved to `backend/models/match_outcome_logreg_v1.joblib` (git-ignored). Pass `--version v2` to save a new one, or `--force` to overwrite.
+
 ## Layout
 
 ```

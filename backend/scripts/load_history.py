@@ -22,6 +22,7 @@ from sqlalchemy.ext.asyncio import AsyncConnection
 
 from app.db import engine
 from app.football_data import (
+    ODDS_COLUMNS,
     STAT_COLUMNS,
     clean_results,
     read_raw_csv,
@@ -106,7 +107,7 @@ async def upsert_matches(
     rerun with the same data writes nothing and reports 0 inserted, 0 updated.
     """
     stmt = insert(Match).values(records)
-    updatable = ["match_date", *STAT_COLUMNS]
+    updatable = ["match_date", *STAT_COLUMNS, *ODDS_COLUMNS]
     upsert = stmt.on_conflict_do_update(
         index_elements=[Match.season, Match.home_team_id, Match.away_team_id],
         set_={col: stmt.excluded[col] for col in updatable},

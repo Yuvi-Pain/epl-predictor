@@ -26,6 +26,8 @@ services:
     volumes:
       # Downloaded CSVs are cached here (backend/data/raw on the host, git-ignored).
       - ./backend/data:/app/data
+      # Trained models are written here (backend/models on the host).
+      - ./backend/models:/app/models
     depends_on:
       postgres:
         condition: service_healthy

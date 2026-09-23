@@ -7,3 +7,5 @@ redis==5.2.*
 pytest==8.3.*
 httpx==0.28.*
 pandas==2.2.*
+scikit-learn==1.9.*
+joblib==1.6.*

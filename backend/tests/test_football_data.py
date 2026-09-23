@@ -38,8 +38,14 @@ def cleaned() -> pd.DataFrame:
 def test_read_strips_bom_drops_blank_rows_and_extra_columns() -> None:
     raw = read_raw_csv(SAMPLE_CSV)
     assert raw.columns[0] == "Date"  # BOM stripped, so the first header is clean
-    assert "B365H" not in raw.columns
+    assert "FTR" not in raw.columns and "Time" not in raw.columns
     assert len(raw) == 4  # the trailing all-empty row is gone
+
+
+def test_missing_odds_columns_are_added_empty() -> None:
+    raw = read_raw_csv(SAMPLE_CSV)  # the sample has B365H but no B365D / B365A
+    assert raw["B365H"].tolist() == ["1.6", "7.5", "2.1", "2.9"]
+    assert raw["B365D"].isna().all() and raw["B365A"].isna().all()
 
 
 def test_read_rejects_file_missing_columns(tmp_path: Path) -> None:
@@ -123,6 +129,20 @@ def test_unplayed_fixture_has_null_stats(cleaned: pd.DataFrame) -> None:
     assert str(cleaned["home_goals"].dtype) == "Int16"
 
 
+def test_odds_are_parsed_as_nullable_floats(cleaned: pd.DataFrame) -> None:
+    assert cleaned["odds_home"].tolist() == [1.6, 7.5, 2.1, 2.9]  # odds exist before kick-off
+    assert cleaned["odds_draw"].isna().all()
+    assert str(cleaned["odds_home"].dtype) == "Float64"
+
+
+@pytest.mark.parametrize("bad", ["1.0", "0.5", "evens"])
+def test_invalid_odds_are_rejected(bad: str) -> None:
+    raw = read_raw_csv(SAMPLE_CSV)
+    raw.loc[0, "B365H"] = bad
+    with pytest.raises(ValueError):
+        clean_results(raw, "2024-25", ALIAS_TO_ID)
+
+
 def test_output_columns_and_season(cleaned: pd.DataFrame) -> None:
     assert list(cleaned.columns) == OUTPUT_COLUMNS
     assert (cleaned["season"] == "2024-25").all()
@@ -147,6 +167,8 @@ def test_to_records_gives_plain_python_values(cleaned: pd.DataFrame) -> None:
     assert records[0]["home_goals"] == 1 and type(records[0]["home_goals"]) is int
     assert type(records[0]["home_team_id"]) is int
     assert records[3]["home_goals"] is None
+    assert records[0]["odds_home"] == 1.6 and isinstance(records[0]["odds_home"], float)
+    assert records[0]["odds_draw"] is None
     assert records[0]["match_date"] == date(2024, 8, 16)
 
 
