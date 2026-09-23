@@ -45,6 +45,18 @@ docker compose exec backend alembic revision --autogenerate -m "describe the cha
 
 The new file appears in `backend/alembic/versions/`. Commit it.
 
+## Load historical results
+
+Downloads Premier League results for 2015-16 through 2025-26 from [football-data.co.uk](https://www.football-data.co.uk/) and upserts them into the `teams`, `team_aliases` and `matches` tables:
+
+```bash
+docker compose exec backend python -m scripts.load_history
+```
+
+It ends with a per-season table of match and goal counts; every season should show 380 matches. It is safe to rerun: existing matches are updated in place, never duplicated. Downloaded CSVs are cached in `backend/data/raw/` (git-ignored); pass `--refresh` to download them again.
+
+If it stops with `Unknown team names`, a data source used a spelling we haven't seen. Add it to `backend/app/teams.py` and rerun.
+
 ## Layout
 
 ```
