@@ -23,6 +23,9 @@ services:
     env_file: .env
     ports:
       - "8000:8000"
+    volumes:
+      # Downloaded CSVs are cached here (backend/data/raw on the host, git-ignored).
+      - ./backend/data:/app/data
     depends_on:
       postgres:
         condition: service_healthy
