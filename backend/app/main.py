@@ -1,11 +1,39 @@
 """FastAPI entrypoint."""
 
+import logging
+from collections.abc import AsyncIterator
+from contextlib import asynccontextmanager
+
 from fastapi import FastAPI, Response, status
 from sqlalchemy import text
 
+from app.api import router
 from app.db import engine, redis_client
+from app.predictor import ModelLoadError, load_predictor, model_path
 
-app = FastAPI(title="EPL Predictor")
+log = logging.getLogger(__name__)
+
+
+@asynccontextmanager
+async def lifespan(app: FastAPI) -> AsyncIterator[None]:
+    """Load the model once at startup; every request reuses it.
+
+    A missing or incompatible model file does not stop the app: /health and
+    /teams keep working, and endpoints that need the model return 503.
+    """
+    app.state.model_error = None
+    try:
+        app.state.predictor = load_predictor(model_path())
+    except ModelLoadError as exc:
+        log.error("model not loaded: %s", exc)
+        app.state.predictor = None
+        app.state.model_error = f"The model file is incompatible with this code: {exc}"
+    yield
+    await engine.dispose()
+
+
+app = FastAPI(title="EPL Predictor", lifespan=lifespan)
+app.include_router(router)
 
 
 async def check_postgres() -> str:

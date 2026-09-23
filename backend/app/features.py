@@ -18,6 +18,7 @@ Pure pandas and numpy, no database access.
 """
 
 from dataclasses import dataclass
+from datetime import date
 
 import numpy as np
 import pandas as pd
@@ -226,12 +227,15 @@ def rolling_form(matches: pd.DataFrame, window: int = FORM_WINDOW) -> pd.DataFra
     return out
 
 
-def build_features(matches: pd.DataFrame, elo: EloConfig = EloConfig()) -> pd.DataFrame:
+def build_features(
+    matches: pd.DataFrame, elo: EloConfig = EloConfig(), form_window: int = FORM_WINDOW
+) -> pd.DataFrame:
     """Model inputs for every match, plus the result to predict.
 
     Args:
         matches: One row per fixture with at least REQUIRED_COLUMNS, any order.
         elo: Elo parameters.
+        form_window: How many recent matches the form averages cover.
 
     Returns:
         Same index as `matches`, with `season`, `match_date`, FEATURE_COLUMNS and
@@ -251,9 +255,88 @@ def build_features(matches: pd.DataFrame, elo: EloConfig = EloConfig()) -> pd.Da
         [
             matches[["season", "match_date"]],
             elo_ratings(matches, elo),
-            rolling_form(matches),
+            rolling_form(matches, form_window),
         ],
         axis=1,
     )
     features["result"] = match_results(matches)
     return features
+
+
+def season_for_date(day: date) -> str:
+    """Season label a date belongs to: July onwards starts a new season.
+
+    >>> season_for_date(date(2026, 9, 23))
+    '2026-27'
+    """
+    start = day.year if day.month >= 7 else day.year - 1
+    return f"{start}-{(start + 1) % 100:02d}"
+
+
+def build_match_features(
+    history: pd.DataFrame,
+    home_team_id: int,
+    away_team_id: int,
+    as_of: date,
+    elo: EloConfig = EloConfig(),
+    form_window: int = FORM_WINDOW,
+) -> pd.Series:
+    """Features for a hypothetical match between two teams on `as_of`.
+
+    Rather than re-deriving Elo and form separately for serving, this adds the
+    hypothetical fixture to the match history and runs `build_features`, the
+    exact function the model was trained on. So a live prediction sees the same
+    features the model would have seen for a real match with these teams on
+    this date. `tests/test_features.py` checks the two agree on real matches.
+
+    Results on or after `as_of` are blanked, not dropped: they must not feed
+    the features, but the fixtures still tell Elo which teams are in the season
+    (for promoted sides), as they did in training. Any match either team plays
+    on `as_of` is replaced by the hypothetical one, since a team cannot play
+    twice in a day.
+
+    Limitation: before a season's first match is in the data, there is no
+    fixture list for it, so a promoted team's starting Elo is estimated from
+    only the two teams in the hypothetical fixture.
+
+    Args:
+        history: Matches with at least REQUIRED_COLUMNS, e.g. the whole table.
+        home_team_id: Home side.
+        away_team_id: Away side. Must differ from the home side.
+        as_of: Match date. Only results from strictly earlier dates are used.
+        elo: Elo parameters. Pass the ones the model was trained with.
+        form_window: Form window. Pass the one the model was trained with.
+
+    Returns:
+        FEATURE_COLUMNS for the hypothetical match. NaN where a team has no
+        earlier matches (the model's imputer fills those, as in training).
+    """
+    _check_columns(history)
+    if home_team_id == away_team_id:
+        raise ValueError("home and away teams must differ")
+
+    dates = pd.to_datetime(history["match_date"])
+    as_of_ts = pd.Timestamp(as_of)
+    playing = history["home_team_id"].isin([home_team_id, away_team_id]) | history[
+        "away_team_id"
+    ].isin([home_team_id, away_team_id])
+    matches = history[~((dates == as_of_ts) & playing)].copy()
+    result_columns = ["home_goals", "away_goals", "home_shots_on_target", "away_shots_on_target"]
+    matches.loc[pd.to_datetime(matches["match_date"]) >= as_of_ts, result_columns] = pd.NA
+
+    fixture = pd.DataFrame(
+        [
+            {
+                "season": season_for_date(as_of),
+                "match_date": as_of,
+                "home_team_id": home_team_id,
+                "away_team_id": away_team_id,
+                **dict.fromkeys(result_columns, pd.NA),
+            }
+        ]
+    )
+    # Keep the history's dtypes (e.g. nullable Int16) so the fixture concatenates cleanly.
+    fixture = fixture.astype({c: matches[c].dtype for c in fixture.columns if c in matches})
+    combined = pd.concat([matches, fixture], ignore_index=True)
+    features = build_features(combined, elo, form_window)
+    return features.iloc[-1][FEATURE_COLUMNS].astype(float)

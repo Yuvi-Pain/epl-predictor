@@ -14,6 +14,8 @@ from sklearn.pipeline import Pipeline
 from sklearn.preprocessing import StandardScaler
 
 OUTCOMES = ["A", "D", "H"]
+# Key for the model's own scores in the saved metrics, next to the baselines'.
+MODEL_LABEL = "logistic regression"
 
 
 def make_pipeline(c: float = 1.0) -> Pipeline:

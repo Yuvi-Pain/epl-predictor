@@ -17,9 +17,11 @@ from app.features import (
     FEATURE_COLUMNS,
     EloConfig,
     build_features,
+    build_match_features,
     elo_ratings,
     expected_home_score,
     rolling_form,
+    season_for_date,
 )
 
 # Six-team seasons. Team 6 goes down after the first season and team 7 comes up.
@@ -299,3 +301,56 @@ def test_build_features_output_shape() -> None:
     assert features[["home_elo", "away_elo"]].notna().all(axis=None)
     missing_form = features["home_form_points"].isna().sum() + features["away_form_points"].isna().sum()
     assert missing_form == league[["home_team_id", "away_team_id"]].stack().nunique()
+
+
+# --- hypothetical matches (serving) ------------------------------------------------
+
+
+def test_hypothetical_match_features_equal_training_features() -> None:
+    """No training/serving skew: asking for a hypothetical match between the same
+    teams on the same date gives exactly the features training built for the real one."""
+    league = make_league(seed=6)
+    training = build_features(league)[FEATURE_COLUMNS]
+    for i, m in league.iterrows():
+        served = build_match_features(league, m["home_team_id"], m["away_team_id"], m["match_date"])
+        pd.testing.assert_series_equal(served, training.loc[i].astype(float), check_names=False)
+
+
+def test_hypothetical_match_ignores_results_on_or_after_as_of() -> None:
+    league = make_league(seed=7)
+    as_of = sorted(league["match_date"].unique())[12]
+    before = build_match_features(league, 1, 2, as_of)
+    rescored = with_random_results(
+        league, league.index[league["match_date"] >= as_of], np.random.default_rng(3)
+    )
+    pd.testing.assert_series_equal(build_match_features(rescored, 1, 2, as_of), before)
+
+
+def test_hypothetical_match_uses_settings_passed_in() -> None:
+    league = make_league(seed=8)
+    as_of = league["match_date"].max() + timedelta(days=7)
+    default = build_match_features(league, 1, 2, as_of)
+    custom = build_match_features(league, 1, 2, as_of, EloConfig(k=40), form_window=2)
+    assert custom["home_elo"] != default["home_elo"]
+    assert custom["home_form_points"] != default["home_form_points"]
+
+
+def test_hypothetical_match_for_a_team_with_no_history_has_missing_form() -> None:
+    league = make_league(seed=9)
+    features = build_match_features(league, 1, 99, league["match_date"].max() + timedelta(days=7))
+    assert features[[c for c in FEATURE_COLUMNS if c.startswith("away_form")]].isna().all()
+    assert not np.isnan(features["away_elo"])
+
+
+def test_hypothetical_match_rejects_a_team_playing_itself() -> None:
+    with pytest.raises(ValueError, match="differ"):
+        build_match_features(make_league(), 1, 1, date(2018, 1, 1))
+
+
+@pytest.mark.parametrize(
+    "day,season",
+    [(date(2026, 9, 23), "2026-27"), (date(2027, 5, 20), "2026-27"), (date(2026, 7, 1), "2026-27"),
+     (date(2026, 6, 30), "2025-26"), (date(2009, 8, 1), "2009-10")],
+)
+def test_season_for_date(day: date, season: str) -> None:
+    assert season_for_date(day) == season

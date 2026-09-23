@@ -20,19 +20,18 @@ import argparse
 import asyncio
 import logging
 from datetime import UTC, datetime
-from pathlib import Path
 
 import joblib
 import numpy as np
 import pandas as pd
 import sklearn
 from sklearn.pipeline import Pipeline
-from sqlalchemy import select
 
 from app.db import engine
 from app.features import FEATURE_COLUMNS, FORM_WINDOW, EloConfig, build_features
 from app.football_data import ODDS_COLUMNS
 from app.match_model import (
+    MODEL_LABEL,
     OUTCOMES,
     always_home_proba,
     base_rate_proba,
@@ -40,7 +39,8 @@ from app.match_model import (
     make_pipeline,
     score,
 )
-from app.models import Match
+from app.predictor import MODELS_DIR
+from app.repository import load_matches as read_matches
 
 log = logging.getLogger("train_model")
 
@@ -48,19 +48,15 @@ TRAIN_SEASONS = [f"20{y:02d}-{y + 1:02d}" for y in range(15, 24)]  # 2015-16 .. 
 VALIDATION_SEASON = "2024-25"
 TEST_SEASON = "2025-26"
 C_GRID = [0.001, 0.01, 0.1, 1.0, 10.0]
-MODELS_DIR = Path(__file__).resolve().parents[1] / "models"
 
 
 async def load_matches() -> pd.DataFrame:
-    """Every match in the database as a DataFrame, one row per fixture."""
-    columns = [c for c in Match.__table__.columns if c.name != "id"]
-    async with engine.connect() as conn:
-        rows = (await conn.execute(select(*columns).order_by(Match.match_date, Match.id))).all()
-    await engine.dispose()
-    df = pd.DataFrame(rows, columns=[c.name for c in columns])
-    for col in ("home_goals", "away_goals", "home_shots_on_target", "away_shots_on_target"):
-        df[col] = df[col].astype("Int16")
-    return df
+    """Every match in the database, loaded the same way the API loads it."""
+    try:
+        async with engine.connect() as conn:
+            return await read_matches(conn)
+    finally:
+        await engine.dispose()
 
 
 def fit(train: pd.DataFrame, c: float) -> Pipeline:
@@ -87,7 +83,7 @@ def evaluate(
     """Score the model and every baseline on one split."""
     y = split["result"]
     results = {
-        "logistic regression": score(y, model.predict_proba(split[FEATURE_COLUMNS])),
+        MODEL_LABEL: score(y, model.predict_proba(split[FEATURE_COLUMNS])),
         "always home win": score(y, always_home_proba(len(split))),
         "training base rates": score(y, base_rate_proba(train["result"], len(split))),
     }
@@ -115,7 +111,7 @@ def main(version: str, force: bool) -> None:
     elo_config = EloConfig()
     # Features are built over the whole history at once: each row only ever looks
     # backwards in time, so later seasons cannot affect earlier rows.
-    features = build_features(matches, elo_config)
+    features = build_features(matches, elo_config, FORM_WINDOW)
     odds = matches[ODDS_COLUMNS]
 
     played = features["result"].notna()
