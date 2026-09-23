@@ -2,7 +2,15 @@
 
 from datetime import date
 
-from sqlalchemy import CheckConstraint, Date, ForeignKey, SmallInteger, String, UniqueConstraint
+from sqlalchemy import (
+    CheckConstraint,
+    Date,
+    Double,
+    ForeignKey,
+    SmallInteger,
+    String,
+    UniqueConstraint,
+)
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from app.db import Base
@@ -58,6 +66,10 @@ class Match(Base):
     away_shots: Mapped[int | None] = mapped_column(SmallInteger)
     home_shots_on_target: Mapped[int | None] = mapped_column(SmallInteger)
     away_shots_on_target: Mapped[int | None] = mapped_column(SmallInteger)
+    # Bet365 pre-match decimal odds; NULL when the source file has none.
+    odds_home: Mapped[float | None] = mapped_column(Double)
+    odds_draw: Mapped[float | None] = mapped_column(Double)
+    odds_away: Mapped[float | None] = mapped_column(Double)
 
     home_team: Mapped[Team] = relationship(foreign_keys=[home_team_id])
     away_team: Mapped[Team] = relationship(foreign_keys=[away_team_id])

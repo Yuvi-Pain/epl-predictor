@@ -23,6 +23,12 @@ COLUMN_MAP: dict[str, str] = {
     "HST": "home_shots_on_target",
     "AST": "away_shots_on_target",
 }
+# Bet365 pre-match decimal odds. Optional: a file without them loads with NULL odds.
+ODDS_COLUMN_MAP: dict[str, str] = {
+    "B365H": "odds_home",
+    "B365D": "odds_draw",
+    "B365A": "odds_away",
+}
 STAT_COLUMNS = [
     "home_goals",
     "away_goals",
@@ -31,7 +37,15 @@ STAT_COLUMNS = [
     "home_shots_on_target",
     "away_shots_on_target",
 ]
-OUTPUT_COLUMNS = ["season", "match_date", "home_team_id", "away_team_id", *STAT_COLUMNS]
+ODDS_COLUMNS = list(ODDS_COLUMN_MAP.values())
+OUTPUT_COLUMNS = [
+    "season",
+    "match_date",
+    "home_team_id",
+    "away_team_id",
+    *STAT_COLUMNS,
+    *ODDS_COLUMNS,
+]
 
 
 def season_label(code: str) -> str:
@@ -72,14 +86,17 @@ def read_raw_csv(source: Path | IO[bytes]) -> pd.DataFrame:
 
     Newer files start with a UTF-8 byte-order mark; `utf-8-sig` strips it so the
     first header is "Div", not "\\ufeffDiv". Everything is read as text so that
-    cleaning, not the CSV parser, decides how each column is typed.
+    cleaning, not the CSV parser, decides how each column is typed. Odds columns
+    the file lacks are added as empty, since odds are optional.
     """
     raw = pd.read_csv(source, encoding="utf-8-sig", dtype=str, skipinitialspace=True)
     missing = set(COLUMN_MAP) - set(raw.columns)
     if missing:
         raise ValueError(f"CSV is missing expected columns: {sorted(missing)}")
+    # Added columns come back as float NaN; keep them object like the rest, for `.str`.
+    raw = raw.reindex(columns=[*COLUMN_MAP, *ODDS_COLUMN_MAP]).astype(object)
     # Some files end with empty rows or trailing commas; drop rows with no data at all.
-    return raw[list(COLUMN_MAP)].dropna(how="all").reset_index(drop=True)
+    return raw.dropna(how="all").reset_index(drop=True)
 
 
 def parse_match_dates(raw: pd.Series) -> pd.Series:
@@ -151,7 +168,7 @@ def clean_results(raw: pd.DataFrame, season: str, alias_to_id: Mapping[str, int]
         ValueError: On unknown teams, bad dates, non-numeric stats, or a fixture
             that appears twice.
     """
-    df = raw.rename(columns=COLUMN_MAP)
+    df = raw.rename(columns={**COLUMN_MAP, **ODDS_COLUMN_MAP})
 
     cleaned = pd.DataFrame(
         {
@@ -164,6 +181,13 @@ def clean_results(raw: pd.DataFrame, season: str, alias_to_id: Mapping[str, int]
     for col in STAT_COLUMNS:
         # errors="raise": a stray "abc" should stop the load, not become NULL.
         cleaned[col] = pd.to_numeric(df[col].str.strip(), errors="raise").astype("Int16")
+    for col in ODDS_COLUMNS:
+        cleaned[col] = pd.to_numeric(df[col].str.strip(), errors="raise").astype("Float64")
+        # Decimal odds include the returned stake, so a real price is always above 1.0.
+        bad_odds = cleaned[col].le(1.0).fillna(False)
+        if bad_odds.any():
+            rows = bad_odds[bad_odds].index.tolist()
+            raise ValueError(f"{season}: {col} must be above 1.0, bad rows {rows}")
 
     _check_dates_in_season(cleaned["match_date"], season)
 
