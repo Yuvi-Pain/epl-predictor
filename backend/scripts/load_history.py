@@ -7,7 +7,8 @@ Run inside the backend container:
 
 Safe to run repeatedly: teams, aliases and matches are all upserted, so a rerun
 updates changed rows and never creates duplicates. Downloaded CSVs are cached in
-backend/data/raw/ and reused unless --refresh is given.
+backend/data/raw/ and reused unless --refresh is given. The current season's
+file grows as matches are played, so it is always downloaded again.
 """
 
 import argparse
@@ -34,7 +35,9 @@ from app.teams import KNOWN_TEAMS
 
 log = logging.getLogger("load_history")
 
-SEASONS = [f"20{y:02d}-{y + 1:02d}" for y in range(15, 26)]  # 2015-16 .. 2025-26
+SEASONS = [f"20{y:02d}-{y + 1:02d}" for y in range(15, 27)]  # 2015-16 .. 2026-27
+# In progress: football-data only lists played matches, so this file is never final.
+CURRENT_SEASON = SEASONS[-1]
 URL_TEMPLATE = "https://www.football-data.co.uk/mmz4281/{code}/E0.csv"
 RAW_DIR = Path(__file__).resolve().parents[1] / "data" / "raw"
 EXPECTED_MATCHES_PER_SEASON = 380  # 20 teams, each plays the other 19 home and away
@@ -48,7 +51,7 @@ async def download_csv(client: httpx.AsyncClient, season: str, refresh: bool) ->
     """
     code = season_code(season)
     path = RAW_DIR / f"E0_{code}.csv"
-    if path.exists() and not refresh:
+    if path.exists() and not refresh and season != CURRENT_SEASON:
         log.info("%s: using cached %s", season, path.name)
         return path
 
@@ -139,11 +142,12 @@ async def print_sanity_check(conn: AsyncConnection) -> None:
 
     print(f"\n{'season':<9}{'matches':>8}{'played':>8}{'goals':>7}")
     for season, matches, played, goals in rows:
-        flag = (
-            ""
-            if matches == EXPECTED_MATCHES_PER_SEASON
-            else f"  <-- expected {EXPECTED_MATCHES_PER_SEASON}"
-        )
+        if matches == EXPECTED_MATCHES_PER_SEASON:
+            flag = ""
+        elif season == CURRENT_SEASON:
+            flag = "  (in progress)"
+        else:
+            flag = f"  <-- expected {EXPECTED_MATCHES_PER_SEASON}"
         print(f"{season:<9}{matches:>8}{played:>8}{goals or 0:>7}{flag}")
     total = sum(r.matches for r in rows)
     print(

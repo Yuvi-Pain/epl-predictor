@@ -47,13 +47,13 @@ The new file appears in `backend/alembic/versions/`. Commit it.
 
 ## Load historical results
 
-Downloads Premier League results for 2015-16 through 2025-26 from [football-data.co.uk](https://www.football-data.co.uk/) and upserts them into the `teams`, `team_aliases` and `matches` tables:
+Downloads Premier League results for 2015-16 through the current season, 2026-27, from [football-data.co.uk](https://www.football-data.co.uk/) and upserts them into the `teams`, `team_aliases` and `matches` tables:
 
 ```bash
 docker compose exec backend python -m scripts.load_history
 ```
 
-It ends with a per-season table of match and goal counts; every season should show 380 matches. It is safe to rerun: existing matches are updated in place, never duplicated. Downloaded CSVs are cached in `backend/data/raw/` (git-ignored); pass `--refresh` to download them again.
+It ends with a per-season table of match and goal counts; every finished season should show 380 matches, and the current one is marked `(in progress)`. It is safe to rerun: existing matches are updated in place, never duplicated. Downloaded CSVs are cached in `backend/data/raw/` (git-ignored); pass `--refresh` to download them again. The current season's file grows as matches are played, so it is always downloaded fresh: rerun the loader after each round to pick up new results.
 
 If it stops with `Unknown team names`, a data source used a spelling we haven't seen. Add it to `backend/app/teams.py` and rerun.
 
@@ -68,6 +68,21 @@ docker compose exec backend python -m scripts.train_model
 It builds pre-match features from matches played on earlier dates only: Elo ratings, and average points, goals and shots on target over each team's last 5 matches. It then fits a multinomial logistic regression. Seasons are split by time: train on 2015-16 to 2023-24, choose the regularisation strength on 2024-25, test on 2025-26. The script prints accuracy, log loss and Brier score for the model and three baselines: always home win, training-set outcome rates, and Bet365's odds with the margin removed.
 
 The model is saved to `backend/models/match_outcome_logreg_v1.joblib` (git-ignored). Pass `--version v2` to save a new one, or `--force` to overwrite.
+
+## Prediction API
+
+The backend loads the model once at startup (`MODEL_VERSION` in `.env`, default `v1`). After training or switching versions, restart it: `docker compose restart backend`.
+
+| Endpoint | Returns |
+|----------|---------|
+| `GET /teams` | Every team with its id |
+| `GET /predict?home=1&away=17` | Home win / draw / away win probabilities and the features used. Optional `as_of=2026-10-04` predicts as if the match were on that date (default today); only earlier results are used |
+| `GET /matches?season=2026-27` | Each played match in the season with the model's pre-match prediction and the actual result. `model_split` says whether the model trained on that season (then the predictions flatter it) |
+| `GET /model` | Model version, training time, and validation/test scores next to the baselines |
+
+Errors: `400` if home and away are the same team, `404` for an unknown team id or a season with no matches, `422` for malformed parameters, `503` from `/predict`, `/matches` and `/model` when no model file is loaded (`/health` and `/teams` still work). Full schemas are at http://localhost:8000/docs.
+
+Live predictions build features with the same `build_features` function used in training: the hypothetical match is added to the history and featurised alongside it. Elo settings and the form window are read from the model file, not the code defaults.
 
 ## Layout
 
