@@ -7,7 +7,7 @@ Premier League match predictions: a FastAPI backend with an Elo and form model, 
 You need [Docker Desktop](https://www.docker.com/products/docker-desktop/) (or Docker Engine with the Compose plugin).
 
 ```bash
-cp .env.example .env        # then edit .env and set a real password
+cp .env.example .env     
 docker compose up --build
 ```
 
