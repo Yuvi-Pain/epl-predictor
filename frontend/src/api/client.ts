@@ -10,6 +10,8 @@ export type PredictResponse = Schemas["PredictResponse"];
 export type MatchFeatures = Schemas["MatchFeatures"];
 export type MatchList = Schemas["MatchList"];
 export type MatchResult = Schemas["MatchResult"];
+export type UpcomingFixtures = Schemas["UpcomingFixtures"];
+export type UpcomingFixture = Schemas["UpcomingFixture"];
 export type ModelInfo = Schemas["ModelInfo"];
 export type Metrics = Schemas["Metrics"];
 export type SplitMetrics = Schemas["SplitMetrics"];
@@ -66,4 +68,5 @@ export const api = {
     get("/predict", { home, away }, signal),
   matches: (season: string, signal?: AbortSignal) => get("/matches", { season }, signal),
   model: (signal?: AbortSignal) => get("/model", undefined, signal),
+  upcoming: (signal?: AbortSignal) => get("/fixtures/upcoming", undefined, signal),
 };

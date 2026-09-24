@@ -38,3 +38,14 @@ export function outcomeLabel(outcome: Outcome, home: string, away: string): stri
 }
 
 export const OUTCOME_ORDER: readonly Outcome[] = ["home_win", "draw", "away_win"];
+
+const kickoffFormat = new Intl.DateTimeFormat("en-GB", {
+  hour: "2-digit",
+  minute: "2-digit",
+  timeZone: "Europe/London",
+});
+
+/** "2026-10-10T11:30:00Z" -> "12:30": kick-off in UK time, whatever the viewer's timezone. */
+export function kickoffTime(isoDateTime: string): string {
+  return kickoffFormat.format(new Date(isoDateTime));
+}

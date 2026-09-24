@@ -18,8 +18,9 @@ export function Layout() {
           </Link>
           <nav className="nav" aria-label="Main">
             <NavLink to="/" end>
-              Predict
+              Fixtures
             </NavLink>
+            <NavLink to="/predict">Predict</NavLink>
             <NavLink to="/season">This season</NavLink>
             <NavLink to="/model">Model</NavLink>
           </nav>
@@ -35,7 +36,7 @@ export function Layout() {
       <footer className="footer">
         <div className="footer__inner">
           A statistical model, not betting advice. Unofficial: not affiliated with the Premier
-          League or any club. Results data from football-data.co.uk.
+          League or any club. Results data from football-data.co.uk, fixtures from football-data.org.
         </div>
       </footer>
     </div>

@@ -1,4 +1,12 @@
-import type { MatchList, MatchResult, ModelInfo, PredictResponse, TeamList } from "../api/client";
+import type {
+  MatchList,
+  MatchResult,
+  ModelInfo,
+  PredictResponse,
+  TeamList,
+  UpcomingFixture,
+  UpcomingFixtures,
+} from "../api/client";
 
 export const teams: TeamList = {
   teams: [
@@ -86,4 +94,59 @@ export const modelInfo: ModelInfo = {
       "bookmaker (Bet365)": { accuracy: 0.53, log_loss: 0.982, brier: 0.586 },
     },
   },
+};
+
+function upcomingFixture(
+  id: number,
+  date: string,
+  kickoff: string | null,
+  home: [number, string],
+  away: [number, string],
+  probabilities: UpcomingFixture["prediction"]["probabilities"],
+  most_likely: UpcomingFixture["prediction"]["most_likely"],
+): UpcomingFixture {
+  return {
+    match_id: id,
+    match_date: date,
+    kickoff,
+    home_team: { id: home[0], name: home[1] },
+    away_team: { id: away[0], name: away[1] },
+    prediction: { probabilities, most_likely },
+  };
+}
+
+// Kick-offs in UTC; in October the UK is on BST, one hour ahead.
+export const upcoming: UpcomingFixtures = {
+  season: "2026-27",
+  matchday: 6,
+  model_version: "v2",
+  fixtures: [
+    upcomingFixture(
+      101,
+      "2026-10-10",
+      "2026-10-10T11:30:00Z",
+      [1, "Arsenal"],
+      [2, "Aston Villa"],
+      { home_win: 0.63, draw: 0.22, away_win: 0.15 },
+      "home_win",
+    ),
+    upcomingFixture(
+      102,
+      "2026-10-10",
+      "2026-10-10T14:00:00Z",
+      [3, "Nott'm Forest"],
+      [1, "Arsenal"],
+      { home_win: 0.24, draw: 0.27, away_win: 0.49 },
+      "away_win",
+    ),
+    upcomingFixture(
+      103,
+      "2026-10-12",
+      null,
+      [2, "Aston Villa"],
+      [3, "Nott'm Forest"],
+      { home_win: 0.45, draw: 0.3, away_win: 0.25 },
+      "home_win",
+    ),
+  ],
 };
