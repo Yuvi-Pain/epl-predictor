@@ -15,8 +15,9 @@ import pytest
 from fastapi.testclient import TestClient
 
 from app import main
-from app.api import get_repository
-from app.features import FEATURE_COLUMNS
+from app.api import get_predictor, get_repository
+from app.features import DIFF_FEATURE_COLUMNS, FEATURE_COLUMNS
+from app.predictor import Predictor
 from fakes import FakeRepository, StubModel, make_bundle, make_matches, match, metrics
 
 
@@ -57,6 +58,20 @@ def test_predict_returns_probabilities_and_features(client: TestClient, model: S
     # The model got one row with exactly the training feature columns, in order.
     (X,) = model.calls
     assert list(X.columns) == FEATURE_COLUMNS and len(X) == 1
+
+
+def test_predict_passes_a_v2_model_only_its_difference_features(repo: FakeRepository) -> None:
+    model = StubModel()
+    predictor = Predictor.from_bundle({**make_bundle(model), "feature_columns": DIFF_FEATURE_COLUMNS})
+    main.app.dependency_overrides[get_repository] = lambda: repo
+    main.app.dependency_overrides[get_predictor] = lambda: predictor
+    body = TestClient(main.app).get("/predict", params={"home": 1, "away": 3, "as_of": "2026-09-26"}).json()
+
+    (X,) = model.calls
+    assert list(X.columns) == DIFF_FEATURE_COLUMNS
+    assert X.iloc[0]["elo_diff"] == pytest.approx(body["features"]["home_elo"] - body["features"]["away_elo"])
+    # The response still shows each team's own numbers, as for v1.
+    assert set(body["features"]) == set(FEATURE_COLUMNS)
 
 
 def test_predict_only_uses_results_before_as_of(client: TestClient) -> None:
@@ -209,7 +224,7 @@ def test_startup_with_an_incompatible_model_serves_503(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
     path = tmp_path / "old.joblib"
-    joblib.dump({**make_bundle(StubModel()), "feature_columns": ["home_elo", "away_elo"]}, path)
+    joblib.dump({**make_bundle(StubModel()), "feature_columns": ["home_elo", "home_xg"]}, path)
     monkeypatch.setenv("MODEL_PATH", str(path))
     with TestClient(main.app) as c:
         r = c.get("/model")
