@@ -1,11 +1,12 @@
 """Database tables for teams and match results."""
 
-from datetime import date
+from datetime import date, datetime
 
 from sqlalchemy import (
     BigInteger,
     CheckConstraint,
     Date,
+    DateTime,
     Double,
     ForeignKey,
     SmallInteger,
@@ -71,13 +72,18 @@ class Match(Base):
     odds_home: Mapped[float | None] = mapped_column(Double)
     odds_draw: Mapped[float | None] = mapped_column(Double)
     odds_away: Mapped[float | None] = mapped_column(Double)
+    # From the football-data.org fixture list; NULL for matches only in the results CSVs.
+    matchday: Mapped[int | None] = mapped_column(SmallInteger)
+    kickoff_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    # football-data.org's status: SCHEDULED, TIMED, POSTPONED, FINISHED, ...
+    status: Mapped[str | None] = mapped_column(String(16))
 
     home_team: Mapped[Team] = relationship(foreign_keys=[home_team_id])
     away_team: Mapped[Team] = relationship(foreign_keys=[away_team_id])
 
 
 class DataVersion(Base):
-    """A counter bumped whenever the history loader changes teams or matches.
+    """A counter bumped whenever the history loader or fixture refresh changes teams or matches.
 
     Exactly one row (id 1). The API puts the counter in its cache keys, so a
     bump makes every cached response built from older data unreachable.

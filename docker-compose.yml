@@ -43,6 +43,23 @@ services:
       timeout: 3s
       retries: 10
 
+  worker:
+    # Same image as the backend, different command: runs the scheduled jobs
+    # (fixture refresh, history loader) in their own process. See scripts/worker.py.
+    build: ./backend
+    command: ["python", "-m", "scripts.worker"]
+    env_file: .env
+    # A small init as PID 1, so `docker compose stop` (SIGTERM) stops the worker
+    # at once instead of after the 10-second kill timeout.
+    init: true
+    restart: unless-stopped
+    volumes:
+      - ./backend/data:/app/data
+    depends_on:
+      # The backend applies migrations on start; wait for it so the tables exist.
+      backend:
+        condition: service_healthy
+
   frontend:
     build: ./frontend
     environment:

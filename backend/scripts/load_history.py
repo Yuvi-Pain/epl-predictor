@@ -17,7 +17,7 @@ import logging
 from pathlib import Path
 
 import httpx
-from sqlalchemy import Boolean, func, literal_column, select, tuple_, update
+from sqlalchemy import Boolean, func, literal_column, select, tuple_
 from sqlalchemy.dialects.postgresql import insert
 from sqlalchemy.ext.asyncio import AsyncConnection
 
@@ -30,8 +30,8 @@ from app.football_data import (
     season_code,
     to_records,
 )
-from app.models import DataVersion, Match, Team, TeamAlias
-from app.teams import KNOWN_TEAMS
+from app.ingest import bump_data_version, seed_teams
+from app.models import Match
 
 log = logging.getLogger("load_history")
 
@@ -77,37 +77,6 @@ async def download_all(refresh: bool) -> dict[str, Path]:
     return dict(zip(SEASONS, paths, strict=True))
 
 
-async def seed_teams(conn: AsyncConnection) -> tuple[dict[str, int], int]:
-    """Upsert KNOWN_TEAMS into teams/team_aliases.
-
-    Returns the alias -> team id map and how many new teams were inserted.
-    """
-    new_teams = (
-        await conn.execute(
-            insert(Team)
-            .values([{"name": name} for name in KNOWN_TEAMS])
-            .on_conflict_do_nothing(index_elements=[Team.name])
-            .returning(Team.id)
-        )
-    ).all()
-    team_ids = dict((await conn.execute(select(Team.name, Team.id))).tuples().all())
-
-    alias_rows = [
-        {"alias": alias, "team_id": team_ids[name]}
-        for name, others in KNOWN_TEAMS.items()
-        for alias in [name, *others]
-    ]
-    stmt = insert(TeamAlias).values(alias_rows)
-    await conn.execute(
-        stmt.on_conflict_do_update(
-            index_elements=[TeamAlias.alias], set_={"team_id": stmt.excluded.team_id}
-        )
-    )
-    # Read back the whole table, so aliases added by other means are honoured too.
-    aliases = dict((await conn.execute(select(TeamAlias.alias, TeamAlias.team_id))).tuples().all())
-    return aliases, len(new_teams)
-
-
 async def upsert_matches(
     conn: AsyncConnection, records: list[dict[str, object]]
 ) -> tuple[int, int]:
@@ -131,21 +100,6 @@ async def upsert_matches(
     flags = (await conn.execute(upsert)).scalars().all()
     inserted = sum(flags)
     return inserted, len(flags) - inserted
-
-
-async def bump_data_version(conn: AsyncConnection) -> int:
-    """Increment the data version and return the new value.
-
-    The API puts this number in its cache keys, so bumping it (in the same
-    transaction as the match writes) retires every cached response at once.
-    """
-    stmt = (
-        update(DataVersion)
-        .where(DataVersion.id == 1)
-        .values(version=DataVersion.version + 1)
-        .returning(DataVersion.version)
-    )
-    return (await conn.execute(stmt)).scalar_one()
 
 
 async def print_sanity_check(conn: AsyncConnection) -> None:
@@ -177,29 +131,39 @@ async def print_sanity_check(conn: AsyncConnection) -> None:
     )
 
 
-async def main(refresh: bool) -> None:
+async def load(refresh: bool = False, sanity_check: bool = True) -> int:
+    """Download the CSVs and upsert every season. Returns how many rows changed.
+
+    The scheduled worker calls this daily; `main` is the command-line entry point.
+    """
     paths = await download_all(refresh)
-    try:
-        # One transaction: if any season fails to clean or insert, nothing is written.
-        async with engine.begin() as conn:
-            alias_to_id, changed = await seed_teams(conn)
-            for season, path in paths.items():
-                cleaned = clean_results(read_raw_csv(path), season, alias_to_id)
-                inserted, updated = await upsert_matches(conn, to_records(cleaned))
-                changed += inserted + updated
-                log.info(
-                    "%s: %d rows in file, %d inserted, %d updated, %d unchanged",
-                    season,
-                    len(cleaned),
-                    inserted,
-                    updated,
-                    len(cleaned) - inserted - updated,
-                )
-            if changed:
-                log.info("data version is now %d", await bump_data_version(conn))
-            else:
-                log.info("no teams or matches changed; data version left as is")
+    # One transaction: if any season fails to clean or insert, nothing is written.
+    async with engine.begin() as conn:
+        alias_to_id, changed = await seed_teams(conn)
+        for season, path in paths.items():
+            cleaned = clean_results(read_raw_csv(path), season, alias_to_id)
+            inserted, updated = await upsert_matches(conn, to_records(cleaned))
+            changed += inserted + updated
+            log.info(
+                "%s: %d rows in file, %d inserted, %d updated, %d unchanged",
+                season,
+                len(cleaned),
+                inserted,
+                updated,
+                len(cleaned) - inserted - updated,
+            )
+        if changed:
+            log.info("data version is now %d", await bump_data_version(conn))
+        else:
+            log.info("no teams or matches changed; data version left as is")
+        if sanity_check:
             await print_sanity_check(conn)
+    return changed
+
+
+async def main(refresh: bool) -> None:
+    try:
+        await load(refresh)
     finally:
         await engine.dispose()
 

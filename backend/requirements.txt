@@ -10,3 +10,4 @@ pandas==2.2.*
 scikit-learn==1.9.*
 joblib==1.6.*
 fakeredis==2.*
+tzdata==2026.*
