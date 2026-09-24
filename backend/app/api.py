@@ -1,21 +1,30 @@
-"""Prediction endpoints: teams, live predictions, season backtest, model info.
+"""Prediction endpoints: teams, live predictions, upcoming fixtures, season backtest, model info.
 
-/teams, /predict and /matches are cached in Redis (see app/cache.py). Their
-keys include the data version from Postgres and, where the model is used, the
-model's version and training time.
+/teams, /predict, /matches and /fixtures/upcoming are cached in Redis (see
+app/cache.py). Their keys include the data version from Postgres and, where
+the model is used, the model's version and training time.
 """
 
 import asyncio
 from collections.abc import AsyncIterator
-from datetime import date
+from datetime import date, datetime
 from typing import Annotated, Any
 
 import numpy as np
 import pandas as pd
 from fastapi import APIRouter, Depends, HTTPException, Query, Request, Response, status
 
-from app.cache import MATCHES_TTL, PREDICT_TTL, TEAMS_TTL, ResponseCache, cache_key, get_cache
+from app.cache import (
+    FIXTURES_TTL,
+    MATCHES_TTL,
+    PREDICT_TTL,
+    TEAMS_TTL,
+    ResponseCache,
+    cache_key,
+    get_cache,
+)
 from app.db import engine
+from app.fixtures import UK, UPCOMING_STATUSES
 from app.match_model import MODEL_LABEL, OUTCOMES
 from app.predictor import Predictor
 from app.repository import Repository, TeamRow
@@ -34,6 +43,8 @@ from app.schemas import (
     SplitMetrics,
     Team,
     TeamList,
+    UpcomingFixture,
+    UpcomingFixtures,
 )
 
 router = APIRouter()
@@ -88,6 +99,10 @@ def _prediction(proba: np.ndarray) -> Prediction:
         probabilities=OutcomeProbabilities(**by_name),
         most_likely=OUTCOME_NAMES[OUTCOMES[int(np.argmax(proba))]],
     )
+
+
+def _optional_datetime(value: object) -> datetime | None:
+    return None if pd.isna(value) else pd.Timestamp(value).to_pydatetime()  # type: ignore[arg-type]
 
 
 def _nan_to_none(values: pd.Series) -> dict[str, float | None]:
@@ -244,6 +259,98 @@ async def list_matches(
     key = cache_key("matches", _model_tag(predictor), f"d{data_version}", season or "latest")
     return await cache.get_or_build(
         key, MATCHES_TTL, lambda: _build_matches(repo, predictor, season)
+    )
+
+
+def uk_today() -> date:
+    """Today in the UK, the timezone match dates are stored in. Tests override it."""
+    return datetime.now(UK).date()
+
+
+TodayDep = Annotated[date, Depends(uk_today)]
+
+
+def next_matchweek(matches: pd.DataFrame, today: date) -> pd.DataFrame:
+    """The next matchweek's unplayed fixtures, soonest first. Empty if there are none.
+
+    Upcoming means no result yet, dated today or later, and not postponed or
+    under way. The next matchweek is the matchday of the soonest of those; a
+    match rescheduled from an earlier matchday shows up with its old matchday
+    once it is the soonest. Fixtures without a matchday fall back to the seven
+    days from the soonest one.
+    """
+    status = matches["status"]
+    upcoming = matches[
+        matches["home_goals"].isna()
+        & (pd.to_datetime(matches["match_date"]) >= pd.Timestamp(today))
+        & (status.isna() | status.isin(UPCOMING_STATUSES))
+    ].sort_values(["match_date", "kickoff_at", "id"])
+    if upcoming.empty:
+        return upcoming
+    first = upcoming.iloc[0]
+    if pd.isna(first["matchday"]):
+        week_end = pd.Timestamp(first["match_date"]) + pd.Timedelta(days=7)
+        return upcoming[pd.to_datetime(upcoming["match_date"]) < week_end]
+    same_week = upcoming["matchday"].eq(first["matchday"]).fillna(False) & (
+        upcoming["season"] == first["season"]
+    )
+    return upcoming[same_week]
+
+
+async def _build_upcoming(repo: Repository, predictor: Predictor, today: date) -> UpcomingFixtures:
+    matches = await repo.load_matches()
+    fixtures = next_matchweek(matches, today)
+    if fixtures.empty:
+        return UpcomingFixtures(
+            season=None, matchday=None, model_version=predictor.version, fixtures=[]
+        )
+
+    # Pre-match features for every match, as in training; a future fixture's
+    # features use every result so far, the same as /predict would today.
+    features = await asyncio.to_thread(predictor.history_features, matches)
+    proba = predictor.predict_proba(features.loc[fixtures.index])
+    teams = {t.id: t for t in await repo.list_teams()}
+
+    first = fixtures.iloc[0]
+    return UpcomingFixtures(
+        season=str(first["season"]),
+        matchday=None if pd.isna(first["matchday"]) else int(first["matchday"]),
+        model_version=predictor.version,
+        fixtures=[
+            UpcomingFixture(
+                match_id=int(m["id"]),
+                match_date=m["match_date"],
+                kickoff=_optional_datetime(m["kickoff_at"]),
+                home_team=_team(teams[int(m["home_team_id"])]),
+                away_team=_team(teams[int(m["away_team_id"])]),
+                prediction=_prediction(p),
+            )
+            for (_, m), p in zip(fixtures.iterrows(), proba, strict=True)
+        ],
+    )
+
+
+@router.get(
+    "/fixtures/upcoming",
+    response_model=UpcomingFixtures,
+    tags=["predictions"],
+    responses={200: {"headers": CACHE_HEADER_DOC}, **MODEL_UNAVAILABLE},
+)
+async def upcoming_fixtures(
+    repo: RepoDep, predictor: PredictorDep, cache: CacheDep, today: TodayDep
+) -> Response:
+    """The next matchweek's fixtures, soonest first, each with the model's prediction.
+
+    Fixtures come from football-data.org via the worker. An empty list means
+    none are stored yet (or the season is over).
+    """
+    # Today is in the key: a new day can drop fixtures already played.
+    data_version = await repo.data_version()
+    key = cache_key(
+        "fixtures", "upcoming", _model_tag(predictor), f"d{data_version}", today.isoformat()
+    )
+    return await cache.get_or_build(
+        key, FIXTURES_TTL, lambda: _build_upcoming(repo, predictor, today)
     )
 
 

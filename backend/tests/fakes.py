@@ -1,6 +1,6 @@
 """In-memory stand-ins for the database and the model, shared by the API tests."""
 
-from datetime import date
+from datetime import date, datetime
 from typing import Any
 
 import numpy as np
@@ -10,7 +10,12 @@ from app.features import FEATURE_COLUMNS, EloConfig
 from app.match_model import MODEL_LABEL, OUTCOMES
 from app.repository import TeamRow
 
-TEAMS = [TeamRow(1, "Arsenal"), TeamRow(2, "Chelsea"), TeamRow(3, "Liverpool"), TeamRow(4, "Everton")]
+TEAMS = [
+    TeamRow(1, "Arsenal"),
+    TeamRow(2, "Chelsea"),
+    TeamRow(3, "Liverpool"),
+    TeamRow(4, "Everton"),
+]
 # Away win, draw, home win: the stub always favours the home side.
 STUB_PROBA = [0.2, 0.3, 0.5]
 
@@ -27,7 +32,17 @@ class StubModel:
 
 
 def match(
-    id: int, season: str, day: date, home: int, away: int, hg: int | None, ag: int | None
+    id: int,
+    season: str,
+    day: date,
+    home: int,
+    away: int,
+    hg: int | None,
+    ag: int | None,
+    *,
+    matchday: int | None = None,
+    kickoff_at: datetime | None = None,
+    status: str | None = None,
 ) -> dict[str, Any]:
     return {
         "id": id,
@@ -39,6 +54,9 @@ def match(
         "away_goals": ag,
         "home_shots_on_target": None if hg is None else hg + 3,
         "away_shots_on_target": None if ag is None else ag + 2,
+        "matchday": matchday,
+        "kickoff_at": kickoff_at,
+        "status": status,
     }
 
 
@@ -54,7 +72,13 @@ def make_matches(*extra: dict[str, Any]) -> pd.DataFrame:
         *extra,
     ]
     df = pd.DataFrame(rows)
-    for col in ("home_goals", "away_goals", "home_shots_on_target", "away_shots_on_target"):
+    for col in (
+        "home_goals",
+        "away_goals",
+        "home_shots_on_target",
+        "away_shots_on_target",
+        "matchday",
+    ):
         df[col] = df[col].astype("Int16")
     return df
 
