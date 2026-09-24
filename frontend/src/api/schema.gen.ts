@@ -68,6 +68,29 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/fixtures/upcoming": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Upcoming Fixtures
+         * @description The next matchweek's fixtures, soonest first, each with the model's prediction.
+         *
+         *     Fixtures come from football-data.org via the worker. An empty list means
+         *     none are stored yet (or the season is over).
+         */
+        get: operations["upcoming_fixtures_fixtures_upcoming_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/model": {
         parameters: {
             query?: never;
@@ -287,6 +310,45 @@ export interface components {
             /** Teams */
             teams: components["schemas"]["Team"][];
         };
+        /**
+         * UpcomingFixture
+         * @description A match not played yet, with the model's prediction.
+         */
+        UpcomingFixture: {
+            /** Match Id */
+            match_id: number;
+            /**
+             * Match Date
+             * Format: date
+             * @description UK date of the match.
+             */
+            match_date: string;
+            /**
+             * Kickoff
+             * @description Kickoff time in UTC, when known.
+             */
+            kickoff: string | null;
+            home_team: components["schemas"]["Team"];
+            away_team: components["schemas"]["Team"];
+            prediction: components["schemas"]["Prediction"];
+        };
+        /** UpcomingFixtures */
+        UpcomingFixtures: {
+            /**
+             * Season
+             * @description Null when there are no upcoming fixtures.
+             */
+            season: string | null;
+            /**
+             * Matchday
+             * @description Matchweek number, when the fixture list gives one.
+             */
+            matchday: number | null;
+            /** Model Version */
+            model_version: string;
+            /** Fixtures */
+            fixtures: components["schemas"]["UpcomingFixture"][];
+        };
         /** ValidationError */
         ValidationError: {
             /** Location */
@@ -431,6 +493,37 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+            /** @description No usable model file is loaded. */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+        };
+    };
+    upcoming_fixtures_fixtures_upcoming_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    /** @description HIT if served from Redis, MISS if built for this request. */
+                    "X-Cache"?: unknown;
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["UpcomingFixtures"];
                 };
             };
             /** @description No usable model file is loaded. */

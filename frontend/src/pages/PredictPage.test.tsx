@@ -41,7 +41,7 @@ describe("PredictPage", () => {
 
   it("does not offer the home team as the away team", async () => {
     mockApi({ "/api/teams": { body: teams } });
-    renderWithProviders(<PredictPage />, { route: "/?home=1" });
+    renderWithProviders(<PredictPage />, { route: "/predict?home=1" });
 
     const away = await screen.findByLabelText("Away team");
     expect(within(away).queryByRole("option", { name: "Arsenal" })).not.toBeInTheDocument();
@@ -50,7 +50,7 @@ describe("PredictPage", () => {
   it("swaps home and away", async () => {
     const user = userEvent.setup();
     mockApi({ "/api/teams": { body: teams }, "/api/predict": { body: prediction } });
-    renderWithProviders(<PredictPage />, { route: "/?home=1&away=2" });
+    renderWithProviders(<PredictPage />, { route: "/predict?home=1&away=2" });
 
     await user.click(await screen.findByRole("button", { name: "Swap home and away" }));
     expect(screen.getByLabelText("Home team")).toHaveValue("2");
@@ -62,7 +62,7 @@ describe("PredictPage", () => {
       "/api/teams": { body: teams },
       "/api/predict": { status: 503, body: { detail: "No trained model is loaded." } },
     });
-    renderWithProviders(<PredictPage />, { route: "/?home=1&away=2" });
+    renderWithProviders(<PredictPage />, { route: "/predict?home=1&away=2" });
 
     expect(await screen.findByRole("alert")).toHaveTextContent("No trained model is loaded.");
   });

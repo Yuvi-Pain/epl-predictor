@@ -1,6 +1,6 @@
 """Pydantic response models for the prediction API."""
 
-from datetime import date
+from datetime import date, datetime
 from typing import Literal
 
 from pydantic import BaseModel, Field
@@ -114,3 +114,21 @@ class ModelInfo(BaseModel):
 
 class ErrorResponse(BaseModel):
     detail: str
+
+
+class UpcomingFixture(BaseModel):
+    """A match not played yet, with the model's prediction."""
+
+    match_id: int
+    match_date: date = Field(description="UK date of the match.")
+    kickoff: datetime | None = Field(description="Kickoff time in UTC, when known.")
+    home_team: Team
+    away_team: Team
+    prediction: Prediction
+
+
+class UpcomingFixtures(BaseModel):
+    season: str | None = Field(description="Null when there are no upcoming fixtures.")
+    matchday: int | None = Field(description="Matchweek number, when the fixture list gives one.")
+    model_version: str
+    fixtures: list[UpcomingFixture]

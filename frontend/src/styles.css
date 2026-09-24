@@ -225,7 +225,8 @@ a {
 
 .nav a {
   flex: 1 0 auto;
-  padding: var(--space-2) var(--space-3);
+  /* Narrow sides on phones, so all four links fit across a 375px screen. */
+  padding: var(--space-2) var(--space-2);
   font-family: var(--font-display);
   font-weight: 600;
   font-size: 1.125rem;
@@ -253,6 +254,7 @@ a {
   }
   .nav a {
     flex: 0 0 auto;
+    padding: var(--space-2) var(--space-3);
   }
 }
 
@@ -927,6 +929,149 @@ a {
   justify-items: end;
   gap: var(--space-1);
   text-align: right;
+}
+
+/* Upcoming fixtures (home page). Each row is one link to the Predict page. */
+
+.upcoming-key {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-1) var(--space-4);
+  margin: 0;
+  padding: 0;
+  list-style: none;
+  font-size: 0.8125rem;
+  color: var(--ink-soft);
+}
+
+.upcoming-key__item::before {
+  content: "";
+  display: inline-block;
+  width: 0.75rem;
+  height: 0.75rem;
+  margin-right: var(--space-1);
+  vertical-align: -0.1em;
+  border-radius: 2px;
+  background: var(--swatch);
+}
+
+.upcoming-key__item--home_win,
+.upcoming__number--home_win {
+  --swatch: var(--home);
+}
+.upcoming-key__item--draw,
+.upcoming__number--draw {
+  --swatch: var(--draw);
+}
+.upcoming-key__item--away_win,
+.upcoming__number--away_win {
+  --swatch: var(--away);
+}
+
+.upcoming-list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: grid;
+}
+
+.upcoming {
+  display: grid;
+  grid-template-columns: 3.25rem minmax(0, 1fr) auto;
+  grid-template-areas:
+    "time teams go"
+    "chances chances chances";
+  gap: var(--space-2) var(--space-3);
+  align-items: center;
+  padding: var(--space-3) var(--space-2);
+  margin: 0 calc(-1 * var(--space-2));
+  border-bottom: 1px solid var(--line);
+  border-radius: var(--radius-sm);
+  color: inherit;
+  text-decoration: none;
+}
+
+.upcoming-list > li:last-child .upcoming {
+  border-bottom: 0;
+}
+
+@media (min-width: 48rem) {
+  .upcoming {
+    grid-template-columns: 3.25rem minmax(0, 1.2fr) minmax(0, 1fr) 1rem;
+    grid-template-areas: "time teams chances go";
+  }
+}
+
+.upcoming:hover {
+  background: var(--surface-sunk);
+}
+
+.upcoming__time {
+  grid-area: time;
+  align-self: start;
+  font-family: var(--font-display);
+  font-weight: 700;
+  font-size: 1.125rem;
+  line-height: 1.6;
+}
+
+.upcoming__teams {
+  grid-area: teams;
+  display: grid;
+  gap: var(--space-1);
+  min-width: 0;
+}
+
+.upcoming__chances {
+  grid-area: chances;
+  display: grid;
+  gap: var(--space-1);
+  min-width: 0;
+}
+
+.upcoming__numbers {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  font-size: 0.875rem;
+  color: var(--ink-soft);
+}
+
+.upcoming__number {
+  display: flex;
+  align-items: center;
+  gap: var(--space-1);
+}
+
+.upcoming__number::before {
+  content: "";
+  width: 0.5rem;
+  height: 0.5rem;
+  border-radius: 1px;
+  background: var(--swatch);
+}
+
+.upcoming__number--draw {
+  justify-content: center;
+}
+
+.upcoming__number--away_win {
+  justify-content: flex-end;
+}
+
+.upcoming__number--top {
+  color: var(--ink);
+  font-weight: 700;
+}
+
+.upcoming__go {
+  grid-area: go;
+  font-size: 1.5rem;
+  line-height: 1;
+  color: var(--ink-soft);
+}
+
+.upcoming:hover .upcoming__go {
+  color: var(--pitch);
 }
 
 .pill {

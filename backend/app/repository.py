@@ -12,8 +12,15 @@ from sqlalchemy.ext.asyncio import AsyncConnection
 
 from app.models import DataVersion, Match, Team
 
-# Nullable integers: unplayed matches have no goals or shots.
-_NULLABLE_INT_COLUMNS = ("home_goals", "away_goals", "home_shots_on_target", "away_shots_on_target")
+# Nullable integers: unplayed matches have no goals or shots, and only fixtures
+# from football-data.org have a matchday.
+_NULLABLE_INT_COLUMNS = (
+    "home_goals",
+    "away_goals",
+    "home_shots_on_target",
+    "away_shots_on_target",
+    "matchday",
+)
 
 
 @dataclass(frozen=True)

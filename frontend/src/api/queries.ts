@@ -12,6 +12,7 @@ export const queryKeys = {
   predict: (home: number, away: number) => ["predict", home, away] as const,
   matches: (season: string) => ["matches", season] as const,
   model: ["model"] as const,
+  upcoming: ["fixtures", "upcoming"] as const,
 };
 
 export function useTeams() {
@@ -46,5 +47,14 @@ export function useModelInfo() {
     queryKey: queryKeys.model,
     queryFn: ({ signal }) => api.model(signal),
     staleTime: 60 * MINUTE,
+  });
+}
+
+/** The next matchweek. Fixtures are refreshed a few times a day, so ten minutes is plenty. */
+export function useUpcomingFixtures() {
+  return useQuery({
+    queryKey: queryKeys.upcoming,
+    queryFn: ({ signal }) => api.upcoming(signal),
+    staleTime: 10 * MINUTE,
   });
 }

@@ -38,6 +38,7 @@ KEY_PREFIX = "epl:v1"
 TEAMS_TTL = timedelta(hours=24)
 MATCHES_TTL = timedelta(hours=6)
 PREDICT_TTL = timedelta(hours=1)
+FIXTURES_TTL = timedelta(hours=6)
 
 CACHE_HEADER = "X-Cache"
 RETRY_AFTER = timedelta(seconds=30)
