@@ -1,6 +1,6 @@
 # EPL Predictor
 
-Skeleton app: a FastAPI backend, a React + Vite + TypeScript frontend, Postgres and Redis, all run with Docker Compose. No football logic yet.
+Premier League match predictions: a FastAPI backend with an Elo and form model, a React + Vite + TypeScript frontend, Postgres and Redis, all run with Docker Compose.
 
 ## Run it
 
@@ -17,7 +17,7 @@ When it's ready:
 
 | What | URL |
 |------|-----|
-| Frontend (shows backend health) | http://localhost:5173 |
+| Frontend | http://localhost:5173 |
 | Backend health check | http://localhost:8000/health |
 | Backend API docs | http://localhost:8000/docs |
 
@@ -117,4 +117,35 @@ backend/    FastAPI app, Alembic migrations, pytest tests
 frontend/   React + Vite + TypeScript single page
 docker-compose.yml
 .env.example  template for .env (the real .env is never committed)
+```
+
+## Frontend
+
+Three pages, served by Vite at http://localhost:5173:
+
+| Page | Shows |
+|------|-------|
+| Predict (`/`) | Pick a home and away team for win/draw/loss chances and the Elo and form numbers behind them. The teams are kept in the URL (`/?home=1&away=17`), so a prediction can be shared |
+| This season (`/season`) | Every 2026-27 match played so far, the model's pre-match pick next to the result, and its running record |
+| Model (`/model`) | The loaded model's version and seasons, and its test scores against the baselines and the bookmaker |
+
+The browser calls `/api/...` on the Vite server, which strips `/api` and forwards to the backend.
+
+### API types
+
+`frontend/src/api/schema.gen.ts` is generated from the backend's OpenAPI schema with [openapi-typescript](https://openapi-ts.dev/), so a backend change that breaks the frontend fails the type check. After changing a backend response model, with the backend running:
+
+```bash
+docker compose exec frontend npm run gen:api
+```
+
+Commit the regenerated file. `npm run check:api` exits non-zero if it is out of date. Outside Docker, the scripts read the backend from `BACKEND_URL` (default `http://localhost:8000`), or from a saved schema file: `npm run gen:api -- openapi.json`.
+
+### Frontend tests
+
+Vitest and React Testing Library:
+
+```bash
+docker compose exec frontend npm test
+docker compose exec frontend npm run typecheck
 ```
