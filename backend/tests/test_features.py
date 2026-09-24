@@ -7,6 +7,7 @@ date do not move. If any feature read the match's own result, a same-day result
 or a later one, that test would fail.
 """
 
+import pickle
 from datetime import date, timedelta
 
 import numpy as np
@@ -14,7 +15,9 @@ import pandas as pd
 import pytest
 
 from app.features import (
+    ALL_FEATURE_COLUMNS,
     FEATURE_COLUMNS,
+    FORM_STATS,
     EloConfig,
     build_features,
     build_match_features,
@@ -102,9 +105,12 @@ def frame(rows: list[dict]) -> pd.DataFrame:
 
 
 @pytest.mark.parametrize("mode", ["rewrite", "blank"])
-def test_no_feature_uses_the_match_itself_or_later(mode: str) -> None:
+@pytest.mark.parametrize(
+    "elo", [EloConfig(), EloConfig(k=30, season_regression=0.3, promoted_offset=-80)], ids=["v1", "v2"]
+)
+def test_no_feature_uses_the_match_itself_or_later(mode: str, elo: EloConfig) -> None:
     league = make_league(seed=1)
-    baseline = build_features(league)[FEATURE_COLUMNS]
+    baseline = build_features(league, elo)[ALL_FEATURE_COLUMNS]
     rng = np.random.default_rng(99)
 
     changed_somewhere = False
@@ -117,7 +123,7 @@ def test_no_feature_uses_the_match_itself_or_later(mode: str) -> None:
             altered.loc[on_or_after, ["home_goals", "away_goals"]] = pd.NA
             altered.loc[on_or_after, ["home_shots_on_target", "away_shots_on_target"]] = pd.NA
 
-        features = build_features(altered)[FEATURE_COLUMNS]
+        features = build_features(altered, elo)[ALL_FEATURE_COLUMNS]
 
         # Everything up to and including the cutoff date is unaffected...
         upto = league["match_date"] <= cutoff
@@ -139,8 +145,8 @@ def test_feature_rows_do_not_depend_on_input_order() -> None:
 
 
 def test_result_is_not_a_feature() -> None:
-    assert "result" not in FEATURE_COLUMNS
-    assert not any("goals" == c or c.endswith("_goals") for c in FEATURE_COLUMNS)
+    assert "result" not in ALL_FEATURE_COLUMNS
+    assert not any("goals" == c or c.endswith("_goals") for c in ALL_FEATURE_COLUMNS)
 
 
 def test_team_playing_twice_in_a_day_is_rejected() -> None:
@@ -229,6 +235,71 @@ def test_promoted_teams_start_at_relegated_teams_average() -> None:
     assert elo.loc[4, "home_elo"] != pytest.approx(team3_end)
 
 
+def two_season_league() -> pd.DataFrame:
+    """2015-16: 1 beats 3 and 2 beats 4. 2016-17: 4 relegated, 5 promoted."""
+    return frame(
+        [
+            fixture("2015-16", date(2016, 5, 1), 1, 3, 3, 0),
+            fixture("2015-16", date(2016, 5, 1), 2, 4, 2, 0),
+            fixture("2016-17", date(2016, 8, 13), 1, 2, None, None),
+            fixture("2016-17", date(2016, 8, 13), 3, 5, None, None),
+        ]
+    )
+
+
+def test_season_regression_pulls_ratings_towards_the_average() -> None:
+    league = two_season_league()
+    carried = elo_ratings(league).loc[2:3]
+    pulled = elo_ratings(league, EloConfig(season_regression=0.4)).loc[2:3]
+    # All four 2015-16 teams average 1500 (Elo is zero-sum), so a 40% pull
+    # leaves 60% of each team's gap to 1500.
+    for team_rating, pulled_rating in [
+        (carried.loc[2, "home_elo"], pulled.loc[2, "home_elo"]),  # team 1
+        (carried.loc[3, "home_elo"], pulled.loc[3, "home_elo"]),  # team 3
+    ]:
+        assert pulled_rating - 1500 == pytest.approx(0.6 * (team_rating - 1500))
+
+
+def test_promoted_offset_shifts_the_promoted_starting_rating() -> None:
+    league = two_season_league()
+    base = elo_ratings(league).loc[3, "away_elo"]  # team 5 = relegated team 4's rating
+    lower = elo_ratings(league, EloConfig(promoted_offset=-100)).loc[3, "away_elo"]
+    assert lower == pytest.approx(base - 100)
+
+
+def test_promoted_rating_uses_ratings_after_the_pull() -> None:
+    league = two_season_league()
+    cfg = EloConfig(season_regression=0.5, promoted_offset=-50)
+    team4_end = elo_ratings(league).loc[3, "away_elo"]
+    assert elo_ratings(league, cfg).loc[3, "away_elo"] == pytest.approx(
+        1500 + 0.5 * (team4_end - 1500) - 50
+    )
+
+
+def test_elo_config_pickled_before_the_new_fields_still_loads() -> None:
+    """The v1 model file stores an EloConfig without season_regression or promoted_offset."""
+    old = object.__new__(EloConfig)
+    object.__setattr__(old, "__dict__", {"initial": 1500.0, "k": 20.0, "home_advantage": 60.0})
+    restored = pickle.loads(pickle.dumps(old))
+    assert restored.season_regression == 0.0 and restored.promoted_offset == 0.0
+    league = make_league(seed=4)
+    pd.testing.assert_frame_equal(elo_ratings(league, restored), elo_ratings(league))
+
+
+# --- difference features -----------------------------------------------------------
+
+
+def test_differences_are_home_minus_away() -> None:
+    features = build_features(make_league(seed=5))
+    np.testing.assert_allclose(features["elo_diff"], features["home_elo"] - features["away_elo"])
+    for stat in FORM_STATS:
+        np.testing.assert_allclose(
+            features[f"form_{stat}_diff"],
+            features[f"home_form_{stat}"] - features[f"away_form_{stat}"],
+        )
+    assert set(ALL_FEATURE_COLUMNS) <= set(features.columns)
+
+
 def test_first_season_teams_all_start_equal() -> None:
     league = make_league(seed=4)
     first_date = league["match_date"].min()
@@ -310,7 +381,7 @@ def test_hypothetical_match_features_equal_training_features() -> None:
     """No training/serving skew: asking for a hypothetical match between the same
     teams on the same date gives exactly the features training built for the real one."""
     league = make_league(seed=6)
-    training = build_features(league)[FEATURE_COLUMNS]
+    training = build_features(league)[ALL_FEATURE_COLUMNS]
     for i, m in league.iterrows():
         served = build_match_features(league, m["home_team_id"], m["away_team_id"], m["match_date"])
         pd.testing.assert_series_equal(served, training.loc[i].astype(float), check_names=False)

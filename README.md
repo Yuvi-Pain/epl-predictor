@@ -57,7 +57,7 @@ It ends with a per-season table of match and goal counts; every finished season 
 
 If it stops with `Unknown team names`, a data source used a spelling we haven't seen. Add it to `backend/app/teams.py` and rerun.
 
-## Train the baseline model
+## Train the model
 
 After loading history, train a match outcome model (home win / draw / away win):
 
@@ -65,13 +65,24 @@ After loading history, train a match outcome model (home win / draw / away win):
 docker compose exec backend python -m scripts.train_model
 ```
 
-It builds pre-match features from matches played on earlier dates only: Elo ratings, and average points, goals and shots on target over each team's last 5 matches. It then fits a multinomial logistic regression. Seasons are split by time: train on 2015-16 to 2023-24, choose the regularisation strength on 2024-25, test on 2025-26. The script prints accuracy, log loss and Brier score for the model and three baselines: always home win, training-set outcome rates, and Bet365's odds with the margin removed.
+It builds pre-match features from matches played on earlier dates only: Elo ratings, and average points, goals and shots on target over each team's last 5 matches. It then fits a multinomial logistic regression. Seasons are split by time: train on 2015-16 to 2023-24, make every choice on 2024-25 (validation), and score 2025-26 (test) once at the end. The script prints accuracy, log loss and Brier score for the model, the v1 model and three baselines: always home win, training-set outcome rates, and Bet365's odds with the margin removed.
 
-The model is saved to `backend/models/match_outcome_logreg_v1.joblib` (git-ignored). Pass `--version v2` to save a new one, or `--force` to overwrite.
+There are two feature sets (`--features`, default `v2`):
+
+- **v1** uses each team's own Elo and form as separate features. Because home and away Elo get separate weights, two equal teams get a different home advantage at different rating levels.
+- **v2** uses home-minus-away differences (`elo_diff`, `form_*_diff`), so only the gap between the teams matters and the home advantage is a single constant. It also searches the Elo K-factor, how far ratings are pulled back to the average between seasons (0–40%), the promoted teams' starting rating, and whether to keep the form-points feature, all on the validation season.
+
+| 2025-26 test season (380 matches) | accuracy | log loss | Brier |
+|---|---|---|---|
+| v1 | 0.474 | 1.0413 | 0.6277 |
+| v2 | 0.479 | 1.0520 | 0.6334 |
+| Bookmaker (Bet365) | 0.489 | 1.0185 | 0.6115 |
+
+The model is saved to `backend/models/match_outcome_logreg_<version>.joblib` (git-ignored). Pass `--version` to name it differently, or `--force` to overwrite.
 
 ## Prediction API
 
-The backend loads the model once at startup (`MODEL_VERSION` in `.env`, default `v1`). After training or switching versions, restart it: `docker compose restart backend`.
+The backend loads the model once at startup (`MODEL_VERSION` in `.env`, default `v2`; set `MODEL_VERSION=v1` to serve the old one). After training or switching versions, restart it: `docker compose restart backend`.
 
 | Endpoint | Returns |
 |----------|---------|

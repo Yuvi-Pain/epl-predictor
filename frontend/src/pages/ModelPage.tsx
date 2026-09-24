@@ -17,6 +17,12 @@ const FEATURE_LABELS: Record<string, string> = {
   away_form_goals_against: "Away goals conceded",
   away_form_sot_for: "Away shots on target",
   away_form_sot_against: "Away shots on target faced",
+  elo_diff: "Elo gap (home − away)",
+  form_points_diff: "Points gap (last 5)",
+  form_goals_for_diff: "Goals scored gap",
+  form_goals_against_diff: "Goals conceded gap",
+  form_sot_for_diff: "Shots on target gap",
+  form_sot_against_diff: "Shots on target faced gap",
 };
 
 export function ModelPage() {

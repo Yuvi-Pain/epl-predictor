@@ -35,11 +35,17 @@ REQUIRED_COLUMNS = [
 ]
 FORM_STATS = ["points", "goals_for", "goals_against", "sot_for", "sot_against"]
 FORM_WINDOW = 5
+# Per-team features: what the v1 model trains on and what the API shows.
 FEATURE_COLUMNS = [
     "home_elo",
     "away_elo",
     *(f"{side}_form_{stat}" for side in ("home", "away") for stat in FORM_STATS),
 ]
+# Home minus away for each of the above: what v2 trains on. A model on these only
+# sees the gap between the teams, so two equal teams get the same prediction
+# whether both are rated 1300 or 1800, and the home advantage is the intercept.
+DIFF_FEATURE_COLUMNS = ["elo_diff", *(f"form_{stat}_diff" for stat in FORM_STATS)]
+ALL_FEATURE_COLUMNS = [*FEATURE_COLUMNS, *DIFF_FEATURE_COLUMNS]
 
 
 @dataclass(frozen=True)
@@ -51,11 +57,22 @@ class EloConfig:
         k: How far one result moves a rating. Higher reacts faster but is noisier.
         home_advantage: Rating points added to the home side when working out
             the expected result.
+        season_regression: Share of each team's gap to the league average removed
+            between seasons, to allow for summer transfers and managers.
+            0 carries ratings over unchanged; 0.3 pulls every team 30% of the
+            way back to the average.
+        promoted_offset: Rating points added to the relegated teams' average to
+            get the promoted teams' starting rating. Negative starts them below
+            the sides they replace.
     """
 
     initial: float = 1500.0
     k: float = 20.0
     home_advantage: float = 60.0
+    # Defaults reproduce v1, which had neither. Models pickled before these fields
+    # existed still load: a missing attribute falls back to this class default.
+    season_regression: float = 0.0
+    promoted_offset: float = 0.0
 
 
 def expected_home_score(home_elo: float, away_elo: float, home_advantage: float) -> float:
@@ -82,11 +99,15 @@ def _check_columns(matches: pd.DataFrame) -> None:
 def elo_ratings(matches: pd.DataFrame, config: EloConfig = EloConfig()) -> pd.DataFrame:
     """Each team's Elo rating going into each match.
 
-    Promoted teams (in this season's fixtures but not last season's) start the
-    season at the average rating of the teams they replaced. Otherwise a promoted
-    side would enter at 1500, far above where it belongs, or keep a stale rating
-    from years earlier. Only the fixture list is used to spot them, and it is
-    published before the season starts.
+    Between seasons, every team that stayed up is pulled `season_regression` of
+    the way towards last season's average rating.
+
+    Promoted teams (in this season's fixtures but not last season's) then start
+    the season at the average rating of the teams they replaced, plus
+    `promoted_offset`. Otherwise a promoted side would enter at 1500, far above
+    where it belongs, or keep a stale rating from years earlier. Only the
+    fixture list is used to spot them, and it is published before the season
+    starts.
 
     Unplayed matches still get pre-match ratings. They just don't update anything.
 
@@ -114,8 +135,14 @@ def elo_ratings(matches: pd.DataFrame, config: EloConfig = EloConfig()) -> pd.Da
         in_season = (matches["season"] == season).to_numpy()
         teams = set(home_ids[in_season]) | set(away_ids[in_season])
         relegated = previous_teams - teams
+        if previous_teams and config.season_regression:
+            average = float(np.mean([ratings[t] for t in previous_teams]))
+            for team in previous_teams:
+                ratings[team] -= config.season_regression * (ratings[team] - average)
         promoted_rating = (
-            float(np.mean([ratings[t] for t in relegated])) if relegated else config.initial
+            float(np.mean([ratings[t] for t in relegated])) + config.promoted_offset
+            if relegated
+            else config.initial
         )
         for team in teams - previous_teams:
             ratings[team] = promoted_rating if previous_teams else config.initial
@@ -227,6 +254,18 @@ def rolling_form(matches: pd.DataFrame, window: int = FORM_WINDOW) -> pd.DataFra
     return out
 
 
+def add_difference_features(features: pd.DataFrame) -> pd.DataFrame:
+    """Add DIFF_FEATURE_COLUMNS (home minus away) to a frame holding FEATURE_COLUMNS.
+
+    A difference is NaN if either side is (e.g. a team with no earlier matches).
+    """
+    out = features.copy()
+    out["elo_diff"] = out["home_elo"] - out["away_elo"]
+    for stat in FORM_STATS:
+        out[f"form_{stat}_diff"] = out[f"home_form_{stat}"] - out[f"away_form_{stat}"]
+    return out
+
+
 def build_features(
     matches: pd.DataFrame, elo: EloConfig = EloConfig(), form_window: int = FORM_WINDOW
 ) -> pd.DataFrame:
@@ -238,8 +277,8 @@ def build_features(
         form_window: How many recent matches the form averages cover.
 
     Returns:
-        Same index as `matches`, with `season`, `match_date`, FEATURE_COLUMNS and
-        `result` ("H"/"D"/"A", <NA> if unplayed).
+        Same index as `matches`, with `season`, `match_date`, ALL_FEATURE_COLUMNS
+        and `result` ("H"/"D"/"A", <NA> if unplayed).
     """
     _check_columns(matches)
     # "Before this date" only equals "before this match" if no team plays twice in a day.
@@ -251,13 +290,15 @@ def build_features(
     )
     if appearances.duplicated().any():
         raise ValueError("a team plays more than once on the same date")
-    features = pd.concat(
-        [
-            matches[["season", "match_date"]],
-            elo_ratings(matches, elo),
-            rolling_form(matches, form_window),
-        ],
-        axis=1,
+    features = add_difference_features(
+        pd.concat(
+            [
+                matches[["season", "match_date"]],
+                elo_ratings(matches, elo),
+                rolling_form(matches, form_window),
+            ],
+            axis=1,
+        )
     )
     features["result"] = match_results(matches)
     return features
@@ -308,7 +349,7 @@ def build_match_features(
         form_window: Form window. Pass the one the model was trained with.
 
     Returns:
-        FEATURE_COLUMNS for the hypothetical match. NaN where a team has no
+        ALL_FEATURE_COLUMNS for the hypothetical match. NaN where a team has no
         earlier matches (the model's imputer fills those, as in training).
     """
     _check_columns(history)
@@ -339,4 +380,4 @@ def build_match_features(
     fixture = fixture.astype({c: matches[c].dtype for c in fixture.columns if c in matches})
     combined = pd.concat([matches, fixture], ignore_index=True)
     features = build_features(combined, elo, form_window)
-    return features.iloc[-1][FEATURE_COLUMNS].astype(float)
+    return features.iloc[-1][ALL_FEATURE_COLUMNS].astype(float)

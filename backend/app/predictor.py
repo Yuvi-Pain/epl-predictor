@@ -18,13 +18,13 @@ import joblib
 import numpy as np
 import pandas as pd
 
-from app.features import FEATURE_COLUMNS, EloConfig, build_features, build_match_features
+from app.features import ALL_FEATURE_COLUMNS, EloConfig, build_features, build_match_features
 from app.match_model import OUTCOMES
 
 log = logging.getLogger(__name__)
 
 MODELS_DIR = Path(__file__).resolve().parents[1] / "models"
-DEFAULT_MODEL_VERSION = "v1"
+DEFAULT_MODEL_VERSION = "v2"
 
 
 class ProbabilisticModel(Protocol):
@@ -38,7 +38,7 @@ class ModelLoadError(RuntimeError):
 
 
 def model_path() -> Path:
-    """Where to load the model from: $MODEL_PATH, else the $MODEL_VERSION (default v1) file."""
+    """Where to load the model from: $MODEL_PATH, else the $MODEL_VERSION (default v2) file."""
     if explicit := os.environ.get("MODEL_PATH"):
         return Path(explicit)
     version = os.environ.get("MODEL_VERSION", DEFAULT_MODEL_VERSION)
@@ -65,13 +65,15 @@ class Predictor:
         """Build from the dict `scripts/train_model.py` saves.
 
         Raises:
-            ModelLoadError: If the file was trained on different features or
-                classes than this code produces.
+            ModelLoadError: If the file needs features this code does not
+                build, or has different classes.
         """
-        if bundle["feature_columns"] != FEATURE_COLUMNS:
+        # Each version trains on its own subset (v1 per-team, v2 differences);
+        # build_features produces all of them, so any subset can be served.
+        unknown = [c for c in bundle["feature_columns"] if c not in ALL_FEATURE_COLUMNS]
+        if unknown:
             raise ModelLoadError(
-                f"model expects features {bundle['feature_columns']}, "
-                f"but this code builds {FEATURE_COLUMNS}; retrain the model"
+                f"model expects features {unknown} that this code does not build; retrain the model"
             )
         if bundle["classes"] != OUTCOMES:
             raise ModelLoadError(f"model classes {bundle['classes']} != {OUTCOMES}")
