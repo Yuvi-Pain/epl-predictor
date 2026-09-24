@@ -1,47 +1,40 @@
-import { useEffect, useState } from "react";
+import { QueryClientProvider } from "@tanstack/react-query";
+import { useState } from "react";
+import { BrowserRouter, Link, Route, Routes } from "react-router";
+import { createQueryClient } from "./api/queryClient";
+import { Layout } from "./components/Layout";
+import { EmptyState } from "./components/QueryState";
+import { ModelPage } from "./pages/ModelPage";
+import { PredictPage } from "./pages/PredictPage";
+import { SeasonPage } from "./pages/SeasonPage";
 
-type Health = { status: string; postgres: string; redis: string };
-
-type State =
-  | { kind: "loading" }
-  | { kind: "loaded"; httpStatus: number; health: Health }
-  | { kind: "error"; message: string };
+export function AppRoutes() {
+  return (
+    <Routes>
+      <Route element={<Layout />}>
+        <Route index element={<PredictPage />} />
+        <Route path="season" element={<SeasonPage />} />
+        <Route path="model" element={<ModelPage />} />
+        <Route
+          path="*"
+          element={
+            <EmptyState title="Page not found">
+              <Link to="/">Back to the predictor</Link>
+            </EmptyState>
+          }
+        />
+      </Route>
+    </Routes>
+  );
+}
 
 export function App() {
-  const [state, setState] = useState<State>({ kind: "loading" });
-
-  useEffect(() => {
-    const controller = new AbortController();
-    fetch("/health", { signal: controller.signal })
-      .then(async (res) => {
-        const health = (await res.json()) as Health;
-        setState({ kind: "loaded", httpStatus: res.status, health });
-      })
-      .catch((err: unknown) => {
-        if (controller.signal.aborted) return;
-        setState({ kind: "error", message: String(err) });
-      });
-    return () => controller.abort();
-  }, []);
-
+  const [queryClient] = useState(createQueryClient);
   return (
-    <main style={{ fontFamily: "system-ui, sans-serif", padding: "2rem" }}>
-      <h1>EPL Predictor</h1>
-      <h2>Backend health</h2>
-      {state.kind === "loading" && <p>Checking…</p>}
-      {state.kind === "error" && <p role="alert">Could not reach the backend: {state.message}</p>}
-      {state.kind === "loaded" && (
-        <dl>
-          <dt>HTTP status</dt>
-          <dd>{state.httpStatus}</dd>
-          <dt>Overall</dt>
-          <dd>{state.health.status}</dd>
-          <dt>Postgres</dt>
-          <dd>{state.health.postgres}</dd>
-          <dt>Redis</dt>
-          <dd>{state.health.redis}</dd>
-        </dl>
-      )}
-    </main>
+    <QueryClientProvider client={queryClient}>
+      <BrowserRouter>
+        <AppRoutes />
+      </BrowserRouter>
+    </QueryClientProvider>
   );
 }
