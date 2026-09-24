@@ -352,6 +352,22 @@ def test_form_counts_home_and_away_matches_from_the_teams_side() -> None:
     assert form.loc[2, "away_form_goals_against"] == pytest.approx(1.5)  # (2 + 1) / 2
 
 
+def test_form_skips_unplayed_matches_in_the_window() -> None:
+    """A fixture with no result yet is not a match played: it must not count as a
+    0-0 or a defeat, or shrink the window. Team 1's only played match is the 2-0."""
+    df = frame(
+        [
+            fixture("2015-16", date(2015, 8, 8), 1, 2, 2, 0),
+            fixture("2015-16", date(2015, 8, 15), 1, 3, None, None),  # unplayed, in between
+            fixture("2015-16", date(2015, 8, 22), 1, 4, 1, 1),
+        ]
+    )
+    form = rolling_form(df)
+    assert form.loc[2, "home_form_points"] == 3
+    assert form.loc[2, "home_form_goals_for"] == 2
+    assert form.loc[2, "home_form_sot_for"] == 4
+
+
 def test_form_carries_across_seasons() -> None:
     df = frame(
         [
