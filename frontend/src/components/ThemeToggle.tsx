@@ -13,23 +13,23 @@ const OPTIONS = [
 function readTheme(): Theme {
   try {
     const stored = localStorage.getItem(STORAGE_KEY);
-    if (stored === "light" || stored === "dark") return stored;
+    if (stored === "light" || stored === "system") return stored;
   } catch {
-    // Storage blocked (private mode): fall back to the system theme.
+    // Storage blocked (private mode): fall back to the default.
   }
-  return "system";
+  return "dark";
 }
 
-/** System / light / dark. "System" follows prefers-color-scheme via CSS. */
+/** System / light / dark, defaulting to dark. "System" follows prefers-color-scheme via CSS. */
 export function ThemeToggle() {
   const [theme, setTheme] = useState<Theme>(readTheme);
 
   useEffect(() => {
     const root = document.documentElement;
-    if (theme === "system") root.removeAttribute("data-theme");
+    if (theme === "dark") root.removeAttribute("data-theme");
     else root.setAttribute("data-theme", theme);
     try {
-      if (theme === "system") localStorage.removeItem(STORAGE_KEY);
+      if (theme === "dark") localStorage.removeItem(STORAGE_KEY);
       else localStorage.setItem(STORAGE_KEY, theme);
     } catch {
       // Not remembered, but still applied for this visit.

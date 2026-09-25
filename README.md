@@ -28,6 +28,14 @@ Premier League match predictions from an Elo and form model, scored honestly aga
     <td align="center">Model</td>
     <td align="center">Fixtures on a phone</td>
   </tr>
+  <tr>
+    <td><img src="docs/screenshots/light-predict.png" alt="Predict page in light mode"></td>
+    <td align="center"><img src="docs/screenshots/light-phone-fixtures.png" alt="Fixtures page in light mode at phone width" width="260"></td>
+  </tr>
+  <tr>
+    <td align="center">Light mode</td>
+    <td align="center">Light mode on a phone</td>
+  </tr>
 </table>
 
 ## What it does

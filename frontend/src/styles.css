@@ -1,36 +1,48 @@
-/* Design tokens. Light mode is a matchday programme (paper and ink), dark mode
-   a floodlit pitch. Components use the semantic tokens only. */
+/* Design tokens. Dark (the default) is a night match under floodlights: deep
+   purple with one electric-green accent. Light is the same palette by day.
+   Home, draw and away stay blue, grey and orange in both, well clear of the
+   accent and safe for the common forms of colour blindness.
+   Components use the semantic tokens only. */
 :root {
-  color-scheme: light;
-  --paper: #f3f0e8;
-  --surface: #fbfaf6;
-  --surface-sunk: #e9e5da;
-  --ink: #16191c;
-  --ink-soft: #4a5057;
-  --line: #d4cfc2;
-  --line-strong: #a9a394;
-  --pitch: #0d6b3b;
-  --pitch-ink: #ffffff;
-  --focus: #0d6b3b;
+  color-scheme: dark;
+  --paper: #140526;
+  --surface: #1e0c36;
+  --surface-sunk: #2a1647;
+  --ink: #f7f3ff;
+  --ink-soft: #bfb2d6;
+  --line: #37215a;
+  --line-strong: #6f579a;
+  /* The masthead band stays deep purple in both modes. */
+  --band: #0c0219;
+  --band-ink: #f7f3ff;
+  --band-ink-soft: #c4b8da;
+  --band-line: #3a2560;
+  --band-accent: #3dfc97;
+  /* The accent: links, active nav, highlights. --pitch-ink is text on it. */
+  --pitch: #3dfc97;
+  --pitch-ink: #0c0219;
+  --focus: #3dfc97;
 
-  --home: #1d5bb8;
-  --draw: #7a7f86;
-  --away: #c2410c;
+  --home: #5c9dff;
+  --draw: #a39bb8;
+  --away: #ff9447;
 
   /* Track record chart: one colour per entity (live model, shadow model, bookmaker). */
-  --series-live: #2a78d6;
-  --series-shadow: #eb6834;
-  --series-bookmaker: #1baf7a;
+  --series-live: #5c9dff;
+  --series-shadow: #ff9447;
+  --series-bookmaker: #d9d0ea;
 
-  --good: #0d6b3b;
-  --good-bg: #dcefe2;
-  --bad: #b42318;
-  --bad-bg: #f8e1de;
-  --warn-bg: #fbeccb;
-  --warn-ink: #6b4a00;
+  --good: #3dfc97;
+  --good-bg: #133a2e;
+  --bad: #ff9a9a;
+  --bad-bg: #3d1426;
+  --warn-bg: #3a2a0a;
+  --warn-ink: #ffd57a;
 
-  --font-display: "Barlow Condensed", "Arial Narrow", system-ui, sans-serif;
-  --font-body: "Barlow", system-ui, -apple-system, "Segoe UI", sans-serif;
+  --font-display: "Archivo", "Arial Narrow", system-ui, sans-serif;
+  --font-body: "Archivo", system-ui, -apple-system, "Segoe UI", sans-serif;
+  /* Headings use Archivo's width axis, squeezed to a broadcast-style condensed. */
+  --display-stretch: 70%;
 
   --space-1: 0.25rem;
   --space-2: 0.5rem;
@@ -44,58 +56,62 @@
   --page: 64rem;
 }
 
-@media (prefers-color-scheme: dark) {
-  :root:not([data-theme="light"]) {
-    color-scheme: dark;
-    --paper: #09120e;
-    --surface: #0f1b15;
-    --surface-sunk: #15241c;
-    --ink: #e7eee9;
-    --ink-soft: #a3b3a9;
-    --line: #22362b;
-    --line-strong: #3b5446;
-    --pitch: #3ecf7f;
-    --pitch-ink: #06130c;
-    --focus: #7ee2a8;
-    --home: #6ea4f5;
-    --draw: #9aa3ab;
-    --away: #f5894f;
-    --series-live: #3987e5;
-    --series-shadow: #d95926;
-    --series-bookmaker: #199e70;
-    --good: #5fd894;
-    --good-bg: #123322;
-    --bad: #ff8f84;
-    --bad-bg: #3a1714;
-    --warn-bg: #3a2c08;
-    --warn-ink: #f5d27a;
+@media (prefers-color-scheme: light) {
+  :root[data-theme="system"] {
+    color-scheme: light;
+    --paper: #f4f1fa;
+    --surface: #ffffff;
+    --surface-sunk: #ebe5f5;
+    --ink: #1b0933;
+    --ink-soft: #574970;
+    --line: #dcd2ea;
+    --line-strong: #8e7daa;
+    --band: #1b0933;
+    --band-line: #1b0933;
+    --pitch: #007a45;
+    --pitch-ink: #ffffff;
+    --focus: #6d28d9;
+    --home: #1f5fd1;
+    --draw: #7a7290;
+    --away: #c04a00;
+    --series-live: #1f5fd1;
+    --series-shadow: #d4580f;
+    --series-bookmaker: #6b5d85;
+    --good: #007a45;
+    --good-bg: #d9f5e6;
+    --bad: #b42318;
+    --bad-bg: #fbe3e3;
+    --warn-bg: #fbeccb;
+    --warn-ink: #6b4a00;
   }
 }
 
-:root[data-theme="dark"] {
-  color-scheme: dark;
-  --paper: #09120e;
-  --surface: #0f1b15;
-  --surface-sunk: #15241c;
-  --ink: #e7eee9;
-  --ink-soft: #a3b3a9;
-  --line: #22362b;
-  --line-strong: #3b5446;
-  --pitch: #3ecf7f;
-  --pitch-ink: #06130c;
-  --focus: #7ee2a8;
-  --home: #6ea4f5;
-  --draw: #9aa3ab;
-  --away: #f5894f;
-  --series-live: #3987e5;
-  --series-shadow: #d95926;
-  --series-bookmaker: #199e70;
-  --good: #5fd894;
-  --good-bg: #123322;
-  --bad: #ff8f84;
-  --bad-bg: #3a1714;
-  --warn-bg: #3a2c08;
-  --warn-ink: #f5d27a;
+:root[data-theme="light"] {
+  color-scheme: light;
+  --paper: #f4f1fa;
+  --surface: #ffffff;
+  --surface-sunk: #ebe5f5;
+  --ink: #1b0933;
+  --ink-soft: #574970;
+  --line: #dcd2ea;
+  --line-strong: #8e7daa;
+  --band: #1b0933;
+  --band-line: #1b0933;
+  --pitch: #007a45;
+  --pitch-ink: #ffffff;
+  --focus: #6d28d9;
+  --home: #1f5fd1;
+  --draw: #7a7290;
+  --away: #c04a00;
+  --series-live: #1f5fd1;
+  --series-shadow: #d4580f;
+  --series-bookmaker: #6b5d85;
+  --good: #007a45;
+  --good-bg: #d9f5e6;
+  --bad: #b42318;
+  --bad-bg: #fbe3e3;
+  --warn-bg: #fbeccb;
+  --warn-ink: #6b4a00;
 }
 
 *,
@@ -113,6 +129,7 @@ body {
   background: var(--paper);
   color: var(--ink);
   font-family: var(--font-body);
+  font-stretch: normal;
   font-size: 1rem;
   line-height: 1.5;
   font-variant-numeric: tabular-nums;
@@ -122,21 +139,24 @@ h1,
 h2,
 h3 {
   font-family: var(--font-display);
-  font-weight: 700;
-  line-height: 1.1;
+  font-stretch: var(--display-stretch);
+  font-weight: 800;
+  line-height: 1.05;
   margin: 0;
 }
 
 h1 {
-  font-size: clamp(2rem, 6vw, 3rem);
+  font-size: clamp(2.5rem, 8vw, 4rem);
+  font-weight: 900;
   text-transform: uppercase;
-  letter-spacing: 0.01em;
+  letter-spacing: -0.005em;
+  line-height: 0.95;
 }
 
 h2 {
-  font-size: 1.5rem;
+  font-size: 1.625rem;
   text-transform: uppercase;
-  letter-spacing: 0.02em;
+  letter-spacing: 0.01em;
 }
 
 h3 {
@@ -149,6 +169,9 @@ p {
 
 a {
   color: inherit;
+  text-decoration-color: var(--pitch);
+  text-decoration-thickness: 2px;
+  text-underline-offset: 0.2em;
 }
 
 :focus-visible {
@@ -193,8 +216,10 @@ a {
 }
 
 .masthead {
-  border-bottom: 2px solid var(--ink);
-  background: var(--surface);
+  background: var(--band);
+  color: var(--band-ink);
+  border-bottom: 1px solid var(--band-line);
+  --focus: var(--band-accent);
 }
 
 .masthead__inner {
@@ -212,10 +237,11 @@ a {
   align-items: center;
   gap: var(--space-2);
   font-family: var(--font-display);
-  font-weight: 800;
-  font-size: 1.5rem;
+  font-stretch: var(--display-stretch);
+  font-weight: 900;
+  font-size: 1.375rem;
   text-transform: uppercase;
-  letter-spacing: 0.02em;
+  letter-spacing: 0.01em;
   text-decoration: none;
   margin-right: auto;
 }
@@ -223,7 +249,7 @@ a {
 .wordmark__mark {
   width: 1.75rem;
   height: 1.75rem;
-  color: var(--pitch);
+  color: var(--band-accent);
 }
 
 .nav {
@@ -239,23 +265,24 @@ a {
   /* Narrow sides and smaller text on phones, so all five links fit across a 375px screen. */
   padding: var(--space-2) var(--space-1);
   font-family: var(--font-display);
-  font-weight: 600;
+  font-stretch: 62.5%;
+  font-weight: 700;
   font-size: 0.9375rem;
   text-transform: uppercase;
-  letter-spacing: 0.02em;
+  letter-spacing: 0;
   text-decoration: none;
   text-align: center;
-  color: var(--ink-soft);
-  border-bottom: 3px solid transparent;
+  color: var(--band-ink-soft);
+  border-bottom: 4px solid transparent;
 }
 
 .nav a:hover {
-  color: var(--ink);
+  color: var(--band-ink);
 }
 
 .nav a[aria-current="page"] {
-  color: var(--ink);
-  border-bottom-color: var(--pitch);
+  color: var(--band-accent);
+  border-bottom-color: var(--band-accent);
 }
 
 @media (min-width: 40rem) {
@@ -267,8 +294,12 @@ a {
   .nav a {
     flex: 0 0 auto;
     padding: var(--space-2) var(--space-3);
-    font-size: 1.125rem;
+    font-stretch: var(--display-stretch);
+    font-size: 1.25rem;
     letter-spacing: 0.03em;
+  }
+  .wordmark {
+    font-size: 1.625rem;
   }
 }
 
@@ -290,7 +321,9 @@ a {
 
 .page-head__kicker {
   font-family: var(--font-display);
-  font-weight: 600;
+  font-stretch: var(--display-stretch);
+  font-weight: 800;
+  font-size: 1.0625rem;
   text-transform: uppercase;
   letter-spacing: 0.08em;
   color: var(--pitch);
@@ -341,6 +374,19 @@ a {
   border-bottom: 1px solid var(--line);
 }
 
+.panel__title > :first-child {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+}
+
+.panel__title > :first-child::before {
+  content: "";
+  width: 4px;
+  height: 0.9em;
+  background: var(--pitch);
+}
+
 .muted {
   color: var(--ink-soft);
 }
@@ -384,6 +430,7 @@ a {
 
 .field__label {
   font-family: var(--font-display);
+  font-stretch: var(--display-stretch);
   font-weight: 600;
   text-transform: uppercase;
   letter-spacing: 0.05em;
@@ -427,6 +474,7 @@ a {
   box-shadow: inset 0 0 0 2px hsl(var(--hue) 55% 22%);
   color: #fff;
   font-family: var(--font-display);
+  font-stretch: var(--display-stretch);
   font-weight: 700;
   font-size: calc(var(--size) * 0.36);
   letter-spacing: 0.02em;
@@ -473,6 +521,7 @@ a {
 
 .state__title {
   font-family: var(--font-display);
+  font-stretch: var(--display-stretch);
   font-weight: 700;
   font-size: 1.25rem;
   text-transform: uppercase;
@@ -549,6 +598,7 @@ a {
 
 .fixture__name {
   font-family: var(--font-display);
+  font-stretch: var(--display-stretch);
   font-weight: 700;
   font-size: clamp(1.25rem, 4vw, 1.75rem);
   text-transform: uppercase;
@@ -565,6 +615,7 @@ a {
 
 .fixture__vs {
   font-family: var(--font-display);
+  font-stretch: var(--display-stretch);
   font-weight: 700;
   color: var(--ink-soft);
 }
@@ -643,6 +694,7 @@ a {
 
 .probability__value {
   font-family: var(--font-display);
+  font-stretch: var(--display-stretch);
   font-weight: 700;
   font-size: clamp(1.75rem, 7vw, 2.75rem);
   line-height: 1;
@@ -704,6 +756,7 @@ a {
 
 .compare__value {
   font-family: var(--font-display);
+  font-stretch: var(--display-stretch);
   font-weight: 600;
   font-size: 1.25rem;
   margin: 0;
@@ -805,6 +858,7 @@ a {
 
 .record__big {
   font-family: var(--font-display);
+  font-stretch: var(--display-stretch);
   font-weight: 800;
   font-size: clamp(3rem, 12vw, 4.5rem);
   line-height: 0.9;
@@ -865,6 +919,7 @@ a {
 
 .matchday__date {
   font-family: var(--font-display);
+  font-stretch: var(--display-stretch);
   font-weight: 700;
   font-size: 1rem;
   text-transform: uppercase;
@@ -917,6 +972,7 @@ a {
 
 .result__goals {
   font-family: var(--font-display);
+  font-stretch: var(--display-stretch);
   font-weight: 700;
   font-size: 1.25rem;
   min-width: 1.5rem;
@@ -1024,6 +1080,7 @@ a {
   grid-area: time;
   align-self: start;
   font-family: var(--font-display);
+  font-stretch: var(--display-stretch);
   font-weight: 700;
   font-size: 1.125rem;
   line-height: 1.6;
@@ -1145,6 +1202,7 @@ a {
 .facts dd {
   margin: 0;
   font-family: var(--font-display);
+  font-stretch: var(--display-stretch);
   font-weight: 700;
   font-size: 1.375rem;
 }
@@ -1181,6 +1239,7 @@ a {
 
 .metrics thead th {
   font-family: var(--font-display);
+  font-stretch: var(--display-stretch);
   font-weight: 600;
   text-transform: uppercase;
   letter-spacing: 0.05em;
@@ -1192,6 +1251,7 @@ a {
 .metrics thead th small {
   display: block;
   font-family: var(--font-body);
+  font-stretch: normal;
   text-transform: none;
   letter-spacing: 0;
   font-weight: 400;
@@ -1259,6 +1319,7 @@ a {
 .versus__value {
   text-align: right;
   font-family: var(--font-display);
+  font-stretch: var(--display-stretch);
   font-weight: 700;
   font-size: 1.125rem;
 }
@@ -1289,7 +1350,7 @@ details > summary {
 
 .theme-toggle {
   display: inline-flex;
-  border: 1px solid var(--line-strong);
+  border: 1px solid var(--band-ink-soft);
   border-radius: var(--radius-sm);
   overflow: hidden;
 }
@@ -1299,15 +1360,19 @@ details > summary {
   min-height: 2.5rem;
   border: 0;
   background: transparent;
-  color: var(--ink-soft);
+  color: var(--band-ink-soft);
   cursor: pointer;
   display: grid;
   place-items: center;
 }
 
+.theme-toggle button:hover {
+  color: var(--band-ink);
+}
+
 .theme-toggle button[aria-pressed="true"] {
-  background: var(--ink);
-  color: var(--paper);
+  background: var(--band-accent);
+  color: var(--band);
 }
 
 .theme-toggle svg {
