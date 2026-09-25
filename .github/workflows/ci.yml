@@ -40,6 +40,22 @@ jobs:
           cache-dependency-path: backend/requirements.txt
       - run: pip install -r requirements.txt
       - run: alembic upgrade head
+      # The database tests pair up existing teams, which the history loader
+      # normally creates. Seed just the teams; no downloads.
+      - name: Seed teams
+        run: |
+          python - <<'PY'
+          import asyncio
+          from app.db import engine
+          from app.ingest import seed_teams
+
+          async def main():
+              async with engine.begin() as conn:
+                  await seed_teams(conn)
+              await engine.dispose()
+
+          asyncio.run(main())
+          PY
       - run: pytest -q
 
   frontend:

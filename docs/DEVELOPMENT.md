@@ -39,7 +39,7 @@ docker compose exec frontend npm run typecheck
 
 The backend tests use an in-memory Redis and a fake repository. The few that exercise real SQL (fixture upserts, the track record) run against Postgres inside a transaction that is always rolled back, and skip when Postgres isn't reachable. The frontend uses Vitest and React Testing Library.
 
-CI (`.github/workflows/ci.yml`) runs the same commands on every push to `main` and every pull request, with a Postgres service so the database tests run too.
+CI (`.github/workflows/ci.yml`) runs the same commands on every push to `main` and every pull request, with a Postgres service (migrated, with the teams seeded) so the database tests run too.
 
 ## Database migrations (Alembic)
 
