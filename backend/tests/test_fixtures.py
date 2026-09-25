@@ -9,8 +9,7 @@ always mocked.
 
 import asyncio
 import os
-from collections.abc import Awaitable, Callable
-from datetime import date, datetime, timezone
+from datetime import UTC, date, datetime
 from typing import Any
 
 import httpx
@@ -22,7 +21,10 @@ from sqlalchemy.pool import NullPool
 from app import fixtures
 from app.fixtures import UnknownTeamError, parse_fixtures, refresh_fixtures, store_fixtures
 from app.football_data_org import FootballDataClient, RateLimiter
+from app.ingest import seed_teams
 from app.models import DataVersion, Match
+
+from pg import postgres_unreachable, run_in_rollback
 
 ALIASES = {"Arsenal": 1, "Arsenal FC": 1, "Chelsea": 2, "Chelsea FC": 2, "Manchester United FC": 3}
 SEASON_START = "2099-08-14"
@@ -66,7 +68,7 @@ def test_parses_a_fixture_into_a_matches_row() -> None:
     assert row == {
         "season": SEASON,
         "match_date": date(2099, 8, 15),
-        "kickoff_at": datetime(2099, 8, 15, 14, tzinfo=timezone.utc),
+        "kickoff_at": datetime(2099, 8, 15, 14, tzinfo=UTC),
         "matchday": 7,
         "status": "TIMED",
         "home_team_id": 1,
@@ -147,28 +149,6 @@ def test_every_api_spelling_of_a_current_club_is_known() -> None:
 # --- against Postgres, rolled back ---------------------------------------------------
 
 
-def run_in_rollback(test: Callable[[AsyncConnection], Awaitable[None]]) -> None:
-    """Run `test` in a transaction on the real database, then roll everything back."""
-
-    async def go() -> None:
-        engine = create_async_engine(os.environ["DATABASE_URL"], poolclass=NullPool)
-        try:
-            try:
-                conn = await engine.connect()
-            except Exception as exc:  # no database here: these tests need one
-                pytest.skip(f"Postgres not reachable: {exc}")
-            try:
-                async with conn.begin() as tx:
-                    await test(conn)
-                    await tx.rollback()
-            finally:
-                await conn.close()
-        finally:
-            await engine.dispose()
-
-    asyncio.run(go())
-
-
 async def data_version(conn: AsyncConnection) -> int:
     return (await conn.execute(select(DataVersion.version))).scalar_one()
 
@@ -183,6 +163,7 @@ async def stored_rows(conn: AsyncConnection) -> list[Any]:
 
 def test_store_inserts_fixtures_with_null_goals_and_bumps_the_version() -> None:
     async def test(conn: AsyncConnection) -> None:
+        await seed_teams(conn)  # so the count below is fixtures only, even on an empty database
         before = await data_version(conn)
         body = payload(
             api_match("Arsenal FC", "Chelsea FC", matchday=1),
@@ -197,7 +178,7 @@ def test_store_inserts_fixtures_with_null_goals_and_bumps_the_version() -> None:
         assert len(rows) == 2
         assert all(r.home_goals is None and r.away_goals is None for r in rows)
         assert [(r.matchday, r.status) for r in rows] == [(1, "TIMED"), (1, "TIMED")]
-        assert rows[1].kickoff_at == datetime(2099, 8, 16, 15, 30, tzinfo=timezone.utc)
+        assert rows[1].kickoff_at == datetime(2099, 8, 16, 15, 30, tzinfo=UTC)
 
     run_in_rollback(test)
 
@@ -262,7 +243,7 @@ def test_an_unknown_team_writes_nothing(monkeypatch: pytest.MonkeyPatch) -> None
                 async with engine.connect() as conn:
                     before = (await data_version(conn), await func_count(conn))
             except Exception as exc:
-                pytest.skip(f"Postgres not reachable: {exc}")
+                postgres_unreachable(exc)
 
             async with FootballDataClient(
                 "k", transport=transport, limiter=RateLimiter()

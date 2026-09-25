@@ -22,9 +22,11 @@ from sqlalchemy.ext.asyncio import AsyncConnection
 
 from app import main
 from app.api import live_model_version
+from app.ingest import seed_teams
 from app.models import DataVersion, Match, Prediction, Team
 from app.predictor import Predictor
 from app.tracking import fixtures_to_predict, insert_predictions, record_predictions, track_record
+
 from fakes import (
     TEAMS,
     FakeRepository,
@@ -35,7 +37,7 @@ from fakes import (
     match,
     saved,
 )
-from test_fixtures import run_in_rollback
+from pg import run_in_rollback
 
 TEAM_MAP = {t.id: t for t in TEAMS}
 V2 = (0.5, 0.3, 0.2)  # home, draw, away
@@ -333,6 +335,7 @@ async def make_fixture(
 ) -> int:
     """A season-2099 match, with a new pairing of existing teams each call (a pairing
     happens once a season)."""
+    await seed_teams(conn)  # an empty database (as in CI) has no teams yet
     teams = (await conn.execute(select(Team.id).order_by(Team.id).limit(10))).scalars().all()
     taken = (
         await conn.execute(select(func.count()).select_from(Match).where(Match.season == SEASON))
