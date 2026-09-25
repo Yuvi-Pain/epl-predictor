@@ -4,11 +4,15 @@
   football-data.org (`app/fixtures.py`).
 - Every HISTORY_REFRESH_HOURS (default 24): rerun the history loader to pull in
   new results (`scripts/load_history.py`).
+- Every PREDICTIONS_REFRESH_HOURS (default 1): save each tracked model's
+  prediction for fixtures kicking off within PREDICTION_LEAD_HOURS (default
+  24), for the track record (`app/tracking.py`). TRACKED_MODEL_VERSIONS
+  (default "v2,v1") names the models: the live one users see and any shadows.
 
-Both run once at startup, then on their interval. Both bump the data version
+All run once at startup, then on their interval. All bump the data version
 when they change anything, which retires the API's cached responses.
 
-Jobs run one at a time in this one process, so the two never write at the same
+Jobs run one at a time in this one process, so they never write at the same
 time. A failed job is logged and tried again after RETRY_AFTER_FAILURE rather
 than waiting for its next full interval; the worker itself keeps running.
 """
@@ -19,7 +23,7 @@ import os
 import time
 from collections.abc import Awaitable, Callable
 from dataclasses import dataclass
-from datetime import timedelta
+from datetime import UTC, datetime, timedelta
 
 from app.db import engine
 from app.fixtures import refresh_fixtures
@@ -29,6 +33,8 @@ from app.football_data_org import (
     RateLimiter,
     api_key_from_env,
 )
+from app.predictor import MODELS_DIR, ModelLoadError, Predictor, load_predictor
+from app.tracking import record_predictions
 from scripts.load_history import load
 
 log = logging.getLogger("worker")
@@ -77,8 +83,37 @@ def _hours_from_env(name: str, default: float) -> timedelta:
     return timedelta(hours=float(os.environ.get(name, default)))
 
 
+def tracked_versions() -> list[str]:
+    """The model versions to save predictions for, from $TRACKED_MODEL_VERSIONS."""
+    raw = os.environ.get("TRACKED_MODEL_VERSIONS", "v2,v1")
+    return [v.strip() for v in raw.split(",") if v.strip()]
+
+
+def load_tracked_predictors(versions: list[str]) -> list[Predictor]:
+    """Load each tracked model's file. A missing or unusable file is logged and skipped.
+
+    Loaded afresh on every run, so a retrained model is picked up without a restart.
+    """
+    predictors = []
+    for version in versions:
+        path = MODELS_DIR / f"match_outcome_logreg_{version}.joblib"
+        try:
+            predictor = load_predictor(path)
+        except ModelLoadError as exc:
+            log.error("not saving %s predictions: %s", version, exc)
+            continue
+        if predictor is not None:
+            predictors.append(predictor)
+    return predictors
+
+
 def build_jobs(limiter: RateLimiter) -> list[Job]:
-    """The worker's jobs. The fixture job is left out, with a warning, if there is no API key."""
+    """The worker's jobs.
+
+    The fixture and prediction jobs are left out, with a warning, if there is
+    no API key: predictions are only saved for fixtures with a known kickoff
+    time, which only the fixture list provides.
+    """
 
     async def history() -> int:
         return await load(refresh=False, sanity_check=False)
@@ -96,8 +131,21 @@ def build_jobs(limiter: RateLimiter) -> list[Job]:
         async with FootballDataClient(api_key, limiter=limiter) as client:
             return await refresh_fixtures(client)
 
+    versions = tracked_versions()
+    lead = _hours_from_env("PREDICTION_LEAD_HOURS", 24)
+
+    async def predictions() -> int:
+        predictors = load_tracked_predictors(versions)
+        async with engine.begin() as conn:
+            return await record_predictions(conn, predictors, datetime.now(UTC), lead)
+
     # Fixtures first: at startup the fixture list is what the home page needs.
-    return [Job("fixtures", fixtures, _hours_from_env("FIXTURES_REFRESH_HOURS", 6)), *jobs]
+    # Predictions last, so they use the freshest fixtures and results.
+    return [
+        Job("fixtures", fixtures, _hours_from_env("FIXTURES_REFRESH_HOURS", 6)),
+        *jobs,
+        Job("predictions", predictions, _hours_from_env("PREDICTIONS_REFRESH_HOURS", 1)),
+    ]
 
 
 async def main() -> None:

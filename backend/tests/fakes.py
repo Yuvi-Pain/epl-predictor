@@ -43,8 +43,14 @@ def match(
     matchday: int | None = None,
     kickoff_at: datetime | None = None,
     status: str | None = None,
+    odds: tuple[float, float, float] | None = None,
 ) -> dict[str, Any]:
+    """One matches row. `odds` are decimal (home, draw, away) odds."""
+    odds_home, odds_draw, odds_away = odds or (None, None, None)
     return {
+        "odds_home": odds_home,
+        "odds_draw": odds_draw,
+        "odds_away": odds_away,
         "id": id,
         "season": season,
         "match_date": day,
@@ -80,12 +86,37 @@ def make_matches(*extra: dict[str, Any]) -> pd.DataFrame:
         "matchday",
     ):
         df[col] = df[col].astype("Int16")
+    for col in ("odds_home", "odds_draw", "odds_away"):
+        df[col] = df[col].astype(float)
     return df
 
 
+def saved(
+    match_id: int, version: str, at: datetime, proba: tuple[float, float, float]
+) -> dict[str, Any]:
+    """One predictions row. `proba` is (home, draw, away)."""
+    p_home, p_draw, p_away = proba
+    return {
+        "match_id": match_id,
+        "model_version": version,
+        "p_home": p_home,
+        "p_draw": p_draw,
+        "p_away": p_away,
+        "predicted_at": at,
+    }
+
+
+PREDICTION_COLUMNS = ["match_id", "model_version", "p_home", "p_draw", "p_away", "predicted_at"]
+
+
+def make_predictions(*rows: dict[str, Any]) -> pd.DataFrame:
+    return pd.DataFrame(list(rows), columns=PREDICTION_COLUMNS)
+
+
 class FakeRepository:
-    def __init__(self, matches: pd.DataFrame) -> None:
+    def __init__(self, matches: pd.DataFrame, predictions: pd.DataFrame | None = None) -> None:
         self.matches = matches
+        self.predictions = make_predictions() if predictions is None else predictions
         self.version = 1  # what data_version() returns; bump it when changing matches
 
     async def list_teams(self) -> list[TeamRow]:
@@ -96,6 +127,9 @@ class FakeRepository:
 
     async def load_matches(self) -> pd.DataFrame:
         return self.matches.copy()
+
+    async def load_predictions(self) -> pd.DataFrame:
+        return self.predictions.copy()
 
     async def data_version(self) -> int:
         return self.version

@@ -45,7 +45,8 @@ services:
 
   worker:
     # Same image as the backend, different command: runs the scheduled jobs
-    # (fixture refresh, history loader) in their own process. See scripts/worker.py.
+    # (fixture refresh, history loader, saving predictions) in their own process.
+    # See scripts/worker.py.
     build: ./backend
     command: ["python", "-m", "scripts.worker"]
     env_file: .env
@@ -55,6 +56,8 @@ services:
     restart: unless-stopped
     volumes:
       - ./backend/data:/app/data
+      # Every tracked model (live and shadow) predicts before kickoff.
+      - ./backend/models:/app/models
     depends_on:
       # The backend applies migrations on start; wait for it so the tables exist.
       backend:
