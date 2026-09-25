@@ -4,6 +4,7 @@ import type {
   ModelInfo,
   PredictResponse,
   TeamList,
+  TrackRecord,
   UpcomingFixture,
   UpcomingFixtures,
 } from "../api/client";
@@ -148,5 +149,91 @@ export const upcoming: UpcomingFixtures = {
       { home_win: 0.45, draw: 0.3, away_win: 0.25 },
       "home_win",
     ),
+  ],
+};
+
+const probs = (home_win: number, draw: number, away_win: number) => ({
+  probabilities: { home_win, draw, away_win },
+  most_likely: (home_win >= draw && home_win >= away_win
+    ? "home_win"
+    : draw >= away_win
+      ? "draw"
+      : "away_win") as "home_win" | "draw" | "away_win",
+});
+
+export const trackRecord: TrackRecord = {
+  season: "2026-27",
+  live_version: "v2",
+  models: [
+    { version: "v2", role: "live", scored: 2, pending: 1, postponed: 1, late: 0 },
+    { version: "v1", role: "shadow", scored: 2, pending: 1, postponed: 1, late: 0 },
+  ],
+  compared_matches: 2,
+  scores: [
+    { name: "v2", kind: "model", metrics: { accuracy: 0.5, log_loss: 1.151, brier: 0.68 } },
+    { name: "v1", kind: "model", metrics: { accuracy: 0.5, log_loss: 1.060, brier: 0.63 } },
+    { name: "bookmaker", kind: "bookmaker", metrics: { accuracy: 1, log_loss: 0.95, brier: 0.55 } },
+  ],
+  running: [
+    { match_date: "2026-09-19", matches: 1, log_loss: { v2: 0.693, v1: 0.916, bookmaker: 0.73 } },
+    { match_date: "2026-09-20", matches: 2, log_loss: { v2: 1.151, v1: 1.06, bookmaker: 0.95 } },
+  ],
+  matches: [
+    {
+      match_id: 23,
+      match_date: "2026-09-27",
+      kickoff: "2026-09-27T13:00:00Z",
+      home_team: { id: 3, name: "Nott'm Forest" },
+      away_team: { id: 1, name: "Arsenal" },
+      score: null,
+      actual: null,
+      bookmaker: null,
+      predictions: [
+        { model_version: "v2", predicted_at: "2026-09-26T13:00:00Z", status: "pending", prediction: probs(0.3, 0.3, 0.4), correct: null },
+        { model_version: "v1", predicted_at: "2026-09-26T13:00:00Z", status: "pending", prediction: probs(0.35, 0.3, 0.35), correct: null },
+      ],
+    },
+    {
+      match_id: 22,
+      match_date: "2026-09-21",
+      kickoff: "2026-09-21T19:00:00Z",
+      home_team: { id: 2, name: "Aston Villa" },
+      away_team: { id: 3, name: "Nott'm Forest" },
+      score: null,
+      actual: null,
+      bookmaker: null,
+      predictions: [
+        { model_version: "v2", predicted_at: "2026-09-20T19:00:00Z", status: "postponed", prediction: probs(0.5, 0.3, 0.2), correct: null },
+        { model_version: "v1", predicted_at: "2026-09-20T19:00:00Z", status: "postponed", prediction: probs(0.45, 0.3, 0.25), correct: null },
+      ],
+    },
+    {
+      match_id: 21,
+      match_date: "2026-09-20",
+      kickoff: "2026-09-20T14:00:00Z",
+      home_team: { id: 3, name: "Nott'm Forest" },
+      away_team: { id: 2, name: "Aston Villa" },
+      score: { home_goals: 0, away_goals: 1 },
+      actual: "away_win",
+      bookmaker: { home_win: 0.3, draw: 0.3, away_win: 0.4 },
+      predictions: [
+        { model_version: "v2", predicted_at: "2026-09-19T14:00:00Z", status: "scored", prediction: probs(0.5, 0.3, 0.2), correct: false },
+        { model_version: "v1", predicted_at: "2026-09-19T14:00:00Z", status: "scored", prediction: probs(0.4, 0.3, 0.3), correct: false },
+      ],
+    },
+    {
+      match_id: 20,
+      match_date: "2026-09-19",
+      kickoff: "2026-09-19T14:00:00Z",
+      home_team: { id: 1, name: "Arsenal" },
+      away_team: { id: 2, name: "Aston Villa" },
+      score: { home_goals: 2, away_goals: 0 },
+      actual: "home_win",
+      bookmaker: { home_win: 0.52, draw: 0.28, away_win: 0.2 },
+      predictions: [
+        { model_version: "v2", predicted_at: "2026-09-18T14:00:00Z", status: "scored", prediction: probs(0.5, 0.3, 0.2), correct: true },
+        { model_version: "v1", predicted_at: "2026-09-18T14:00:00Z", status: "scored", prediction: probs(0.4, 0.3, 0.3), correct: true },
+      ],
+    },
   ],
 };

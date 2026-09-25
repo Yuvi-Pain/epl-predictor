@@ -91,6 +91,31 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/track-record": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Get Track Record
+         * @description How the predictions saved before kickoff did, per model and against the bookmaker.
+         *
+         *     The worker saves every tracked model's prediction shortly before kickoff
+         *     and never changes it. Only predictions saved before kickoff for matches
+         *     that have been played are scored; postponed matches wait until they are
+         *     played. Unlike /matches, nothing here is recomputed after the fact.
+         */
+        get: operations["get_track_record_track_record_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/model": {
         parameters: {
             query?: never;
@@ -288,6 +313,50 @@ export interface components {
              */
             most_likely: "home_win" | "draw" | "away_win";
         };
+        /**
+         * RunningLogLoss
+         * @description Mean log loss over every compared match up to and including this date.
+         */
+        RunningLogLoss: {
+            /**
+             * Match Date
+             * Format: date
+             */
+            match_date: string;
+            /** Matches */
+            matches: number;
+            /**
+             * Log Loss
+             * @description Keyed by score name: model versions and 'bookmaker'.
+             */
+            log_loss: {
+                [key: string]: number;
+            };
+        };
+        /**
+         * SavedPrediction
+         * @description What one model said about a match, frozen when it was saved.
+         */
+        SavedPrediction: {
+            /** Model Version */
+            model_version: string;
+            /**
+             * Predicted At
+             * Format: date-time
+             */
+            predicted_at: string;
+            /**
+             * Status
+             * @enum {string}
+             */
+            status: "scored" | "pending" | "postponed" | "late";
+            prediction: components["schemas"]["Prediction"];
+            /**
+             * Correct
+             * @description Null unless the prediction is scored.
+             */
+            correct: boolean | null;
+        };
         /** SplitMetrics */
         SplitMetrics: {
             /** Season */
@@ -309,6 +378,113 @@ export interface components {
         TeamList: {
             /** Teams */
             teams: components["schemas"]["Team"][];
+        };
+        /** TrackRecord */
+        TrackRecord: {
+            /**
+             * Season
+             * @description Null when no predictions have been saved yet.
+             */
+            season: string | null;
+            /**
+             * Live Version
+             * @description The model users see; null if none is loaded.
+             */
+            live_version: string | null;
+            /** Models */
+            models: components["schemas"]["TrackedModel"][];
+            /**
+             * Compared Matches
+             * @description Matches every model predicted before kickoff, with a result and bookmaker odds. All scores and the running log loss use exactly these matches.
+             */
+            compared_matches: number;
+            /** Scores */
+            scores: components["schemas"]["TrackRecordScore"][];
+            /**
+             * Running
+             * @description Oldest first, one point per match date.
+             */
+            running: components["schemas"]["RunningLogLoss"][];
+            /**
+             * Matches
+             * @description Newest kickoff first.
+             */
+            matches: components["schemas"]["TrackedMatch"][];
+        };
+        /**
+         * TrackRecordScore
+         * @description One predictor's scores over the compared matches.
+         */
+        TrackRecordScore: {
+            /**
+             * Name
+             * @description A model version, or 'bookmaker'.
+             */
+            name: string;
+            /**
+             * Kind
+             * @enum {string}
+             */
+            kind: "model" | "bookmaker";
+            metrics: components["schemas"]["Metrics"];
+        };
+        /**
+         * TrackedMatch
+         * @description A match with saved predictions and, once played, the result and the bookmaker's view.
+         */
+        TrackedMatch: {
+            /** Match Id */
+            match_id: number;
+            /**
+             * Match Date
+             * Format: date
+             */
+            match_date: string;
+            /** Kickoff */
+            kickoff: string | null;
+            home_team: components["schemas"]["Team"];
+            away_team: components["schemas"]["Team"];
+            score: components["schemas"]["MatchScore"] | null;
+            /** Actual */
+            actual: ("home_win" | "draw" | "away_win") | null;
+            /** @description Implied by Bet365's odds with the margin removed, when the odds are known. */
+            bookmaker: components["schemas"]["OutcomeProbabilities"] | null;
+            /** Predictions */
+            predictions: components["schemas"]["SavedPrediction"][];
+        };
+        /**
+         * TrackedModel
+         * @description How many of one model's saved predictions are in each state.
+         */
+        TrackedModel: {
+            /** Version */
+            version: string;
+            /**
+             * Role
+             * @description 'live' is the model users see; 'shadow' runs alongside it for comparison.
+             * @enum {string}
+             */
+            role: "live" | "shadow";
+            /**
+             * Scored
+             * @description Saved before kickoff and the result is in.
+             */
+            scored: number;
+            /**
+             * Pending
+             * @description Waiting for kickoff or for the result.
+             */
+            pending: number;
+            /**
+             * Postponed
+             * @description Not counted until the match is played.
+             */
+            postponed: number;
+            /**
+             * Late
+             * @description Saved at or after kickoff, so never counted.
+             */
+            late: number;
         };
         /**
          * UpcomingFixture
@@ -533,6 +709,40 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+        };
+    };
+    get_track_record_track_record_get: {
+        parameters: {
+            query?: {
+                /** @description e.g. "2026-27". Defaults to the latest season with saved predictions. */
+                season?: string | null;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    /** @description HIT if served from Redis, MISS if built for this request. */
+                    "X-Cache"?: unknown;
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["TrackRecord"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
                 };
             };
         };

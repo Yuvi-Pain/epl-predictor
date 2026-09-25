@@ -22,6 +22,7 @@ export function Layout() {
             </NavLink>
             <NavLink to="/predict">Predict</NavLink>
             <NavLink to="/season">This season</NavLink>
+            <NavLink to="/track-record">Track record</NavLink>
             <NavLink to="/model">Model</NavLink>
           </nav>
           <ThemeToggle />
