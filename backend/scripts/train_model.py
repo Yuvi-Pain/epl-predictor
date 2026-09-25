@@ -185,7 +185,9 @@ def evaluate(
     return results
 
 
-def previous_model_proba(matches: pd.DataFrame, version: str, split: pd.DataFrame) -> np.ndarray | None:
+def previous_model_proba(
+    matches: pd.DataFrame, version: str, split: pd.DataFrame
+) -> np.ndarray | None:
     """Another saved model's probabilities for `split`, built with its own settings."""
     try:
         predictor = load_predictor(MODELS_DIR / f"match_outcome_logreg_{version}.joblib")
@@ -232,8 +234,13 @@ def main(version: str, feature_set: str, force: bool) -> None:
     for name, split in (("train", train), ("validation", valid), ("test", test)):
         if split.empty:
             raise SystemExit(f"no played matches in the {name} split; run scripts.load_history")
-        log.info("%-10s %s .. %s, %d matches", name, split["match_date"].min(),
-                 split["match_date"].max(), len(split))
+        log.info(
+            "%-10s %s .. %s, %d matches",
+            name,
+            split["match_date"].min(),
+            split["match_date"].max(),
+            len(split),
+        )
     model = fit(train, best.columns, best.c)
 
     # --- 2. The test season, once, for the final choice only ---------------------------
@@ -252,7 +259,10 @@ def main(version: str, feature_set: str, force: bool) -> None:
     coefs = pd.DataFrame(model.named_steps["logreg"].coef_, index=OUTCOMES, columns=best.columns)
     print("\nCoefficients (standardised features; + means more likely):")
     print(coefs.T.round(3).to_string())
-    print("Intercepts:", dict(zip(OUTCOMES, model.named_steps["logreg"].intercept_.round(3))))
+    print(
+        "Intercepts:",
+        dict(zip(OUTCOMES, model.named_steps["logreg"].intercept_.round(3), strict=True)),
+    )
 
     MODELS_DIR.mkdir(parents=True, exist_ok=True)
     joblib.dump(
@@ -283,8 +293,9 @@ def main(version: str, feature_set: str, force: bool) -> None:
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(description="Train the match outcome model.")
-    parser.add_argument("--features", choices=["v1", "v2"], default="v2",
-                        help="feature set and search (default v2)")
+    parser.add_argument(
+        "--features", choices=["v1", "v2"], default="v2", help="feature set and search (default v2)"
+    )
     parser.add_argument("--version", help="version name in the file name (default: --features)")
     parser.add_argument("--force", action="store_true", help="overwrite an existing model file")
     args = parser.parse_args()

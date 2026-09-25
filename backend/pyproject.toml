@@ -1,0 +1,40 @@
+# Lint and type-check settings for the backend. Run from backend/:
+#   ruff check .
+#   mypy
+[tool.ruff]
+line-length = 100
+target-version = "py312"
+# Alembic writes these; they follow its template, not our style.
+extend-exclude = ["alembic/versions"]
+
+[tool.ruff.lint]
+# pycodestyle errors, pyflakes, import order, likely bugs, and modern syntax.
+select = ["E", "F", "I", "B", "UP"]
+
+[tool.ruff.lint.isort]
+known-first-party = ["app", "scripts"]
+# Test helpers imported by name from the tests directory (pytest puts it on sys.path).
+known-local-folder = ["fakes", "test_fixtures", "pg"]
+
+[tool.ruff.lint.flake8-bugbear]
+# FastAPI declares dependencies and query parameters as default values.
+extend-immutable-calls = [
+    "fastapi.Depends",
+    "fastapi.Query",
+    # Frozen dataclasses: a shared default instance cannot be changed.
+    "app.features.EloConfig",
+    "app.football_data_org.RetryPolicy",
+]
+
+[tool.mypy]
+python_version = "3.12"
+files = ["app", "scripts"]
+plugins = ["pydantic.mypy"]
+warn_unused_ignores = true
+warn_redundant_casts = true
+check_untyped_defs = true
+
+[[tool.mypy.overrides]]
+# No type information published for these.
+module = ["sklearn.*", "joblib.*", "fakeredis.*"]
+ignore_missing_imports = true

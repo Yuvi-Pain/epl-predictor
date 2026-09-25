@@ -112,12 +112,12 @@ def _prediction(proba: np.ndarray) -> Prediction:
     )
 
 
-def _optional_datetime(value: object) -> datetime | None:
-    return None if pd.isna(value) else pd.Timestamp(value).to_pydatetime()  # type: ignore[arg-type]
+def _optional_datetime(value: Any) -> datetime | None:
+    return None if pd.isna(value) else pd.Timestamp(value).to_pydatetime()
 
 
 def _nan_to_none(values: pd.Series) -> dict[str, float | None]:
-    return {k: None if pd.isna(v) else float(v) for k, v in values.items()}
+    return {str(k): None if pd.isna(v) else float(v) for k, v in values.items()}
 
 
 async def _build_predict(
@@ -229,7 +229,9 @@ async def predict(
     used in training.
     """
     if home == away:
-        raise HTTPException(status.HTTP_400_BAD_REQUEST, detail="home and away must be different teams")
+        raise HTTPException(
+            status.HTTP_400_BAD_REQUEST, detail="home and away must be different teams"
+        )
     # Resolve the default before building the key, so "today" is cached per day.
     as_of = as_of or date.today()
     data_version = await repo.data_version()
@@ -257,7 +259,9 @@ async def list_matches(
     cache: CacheDep,
     season: Annotated[
         str | None,
-        Query(pattern=r"^\d{4}-\d{2}$", description='e.g. "2026-27". Defaults to the latest season.'),
+        Query(
+            pattern=r"^\d{4}-\d{2}$", description='e.g. "2026-27". Defaults to the latest season.'
+        ),
     ] = None,
 ) -> Response:
     """Played matches in a season, oldest first, each with the model's pre-match prediction.
@@ -371,9 +375,7 @@ async def _build_track_record(
     predictions = await repo.load_predictions()
     matches = await repo.load_matches()
     teams = {t.id: t for t in await repo.list_teams()}
-    return await asyncio.to_thread(
-        track_record, predictions, matches, teams, live_version, season
-    )
+    return await asyncio.to_thread(track_record, predictions, matches, teams, live_version, season)
 
 
 @router.get(
@@ -402,9 +404,7 @@ async def get_track_record(
     played. Unlike /matches, nothing here is recomputed after the fact.
     """
     data_version = await repo.data_version()
-    key = cache_key(
-        "track-record", f"live={live_version}", f"d{data_version}", season or "latest"
-    )
+    key = cache_key("track-record", f"live={live_version}", f"d{data_version}", season or "latest")
     return await cache.get_or_build(
         key, TRACK_RECORD_TTL, lambda: _build_track_record(repo, live_version, season)
     )

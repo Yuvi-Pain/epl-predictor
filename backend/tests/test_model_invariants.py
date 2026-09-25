@@ -23,6 +23,7 @@ import pytest
 from app.features import DIFF_FEATURE_COLUMNS, FEATURE_COLUMNS, FORM_STATS, add_difference_features
 from app.match_model import OUTCOMES, make_pipeline
 from app.predictor import MODELS_DIR, Predictor
+
 from fakes import make_bundle
 
 A, D, H = (OUTCOMES.index(o) for o in ("A", "D", "H"))
@@ -30,7 +31,7 @@ V2_FILE = MODELS_DIR / "match_outcome_logreg_v2.joblib"
 
 
 def synthetic_v2_predictor() -> Predictor:
-    """A v2-style model fitted on made-up matches where the stronger side, and the home side, win more."""
+    """A v2-style model fitted on made-up matches where stronger and home sides win more."""
     rng = np.random.default_rng(0)
     n = 3000
     X = pd.DataFrame(rng.normal(size=(n, len(DIFF_FEATURE_COLUMNS))), columns=DIFF_FEATURE_COLUMNS)
@@ -64,7 +65,7 @@ def team(elo: float, *form: float) -> dict[str, float]:
 
 
 def fixture_rows(pairs: list[tuple[dict[str, float], dict[str, float]]]) -> pd.DataFrame:
-    """Per-team features for (home, away) pairs, plus the differences, as build_features gives them."""
+    """Per-team features for (home, away) pairs plus their differences, like build_features."""
     rows = []
     for home, away in pairs:
         row = {"home_elo": home["elo"], "away_elo": away["elo"]}
@@ -83,7 +84,13 @@ WEAK = team(1330, 0.6, 0.8, 2.1, 3.0, 5.9)
 @pytest.mark.parametrize("make_predictor", PREDICTORS)
 def test_equal_teams_get_the_same_prediction_at_any_rating_level(make_predictor: Any) -> None:
     predictor = make_predictor()
-    form = {"points": 1.5, "goals_for": 1.4, "goals_against": 1.2, "sot_for": 4.5, "sot_against": 4.0}
+    form = {
+        "points": 1.5,
+        "goals_for": 1.4,
+        "goals_against": 1.2,
+        "sot_for": 4.5,
+        "sot_against": 4.0,
+    }
     levels = [1250, 1400, 1500, 1650, 1850]
     pairs = [({"elo": r, **form}, {"elo": r, **form}) for r in levels]
     proba = predictor.predict_proba(fixture_rows(pairs))

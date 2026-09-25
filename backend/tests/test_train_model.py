@@ -1,10 +1,10 @@
 """Tests for the training script's data handling (no database, no fitting)."""
 
 import pandas as pd
+from test_features import fixture, frame
 
 from app.features import build_features
 from scripts.train_model import TEST_SEASON, TRAIN_SEASONS, VALIDATION_SEASON, splits
-from test_features import fixture, frame
 
 
 def test_unplayed_fixtures_are_left_out_of_every_split() -> None:

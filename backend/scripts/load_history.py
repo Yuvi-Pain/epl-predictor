@@ -126,9 +126,9 @@ async def print_sanity_check(conn: AsyncConnection) -> None:
             flag = f"  <-- expected {EXPECTED_MATCHES_PER_SEASON}"
         print(f"{season:<9}{matches:>8}{played:>8}{goals or 0:>7}{flag}")
     total = sum(r.matches for r in rows)
-    print(
-        f"{'total':<9}{total:>8}{sum(r.played for r in rows):>8}{sum(r.goals or 0 for r in rows):>7}"
-    )
+    total_played = sum(r.played for r in rows)
+    total_goals = sum(r.goals or 0 for r in rows)
+    print(f"{'total':<9}{total:>8}{total_played:>8}{total_goals:>7}")
 
 
 async def load(refresh: bool = False, sanity_check: bool = True) -> int:

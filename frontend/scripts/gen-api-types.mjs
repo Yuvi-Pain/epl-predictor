@@ -33,7 +33,8 @@ try {
 const generated = HEADER + astToString(ast);
 
 if (check) {
-  const current = await readFile(OUT, "utf8").catch(() => "");
+  // Compare ignoring CRLF: Windows checkouts (core.autocrlf) convert the file.
+  const current = (await readFile(OUT, "utf8").catch(() => "")).replace(/\r\n/g, "\n");
   if (current !== generated) {
     console.error("src/api/schema.gen.ts is out of date with the backend. Run `npm run gen:api`.");
     process.exit(1);

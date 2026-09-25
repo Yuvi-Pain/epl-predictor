@@ -10,6 +10,7 @@ from app import main
 from app.api import get_predictor, get_repository
 from app.cache import ResponseCache, get_cache
 from app.predictor import Predictor
+
 from fakes import FakeRepository, StubModel, make_bundle, make_matches
 
 

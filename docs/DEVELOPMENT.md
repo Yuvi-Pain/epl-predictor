@@ -37,9 +37,27 @@ docker compose exec frontend npm test
 docker compose exec frontend npm run typecheck
 ```
 
-The backend tests use an in-memory Redis and a fake repository. The few that exercise real SQL (fixture upserts, the track record) run against Postgres inside a transaction that is always rolled back, and skip when Postgres isn't reachable. The frontend uses Vitest and React Testing Library.
+The backend tests use an in-memory Redis and a fake repository. The few that exercise real SQL (fixture upserts, the track record) run against Postgres inside a transaction that is always rolled back, and skip when Postgres isn't reachable. They seed the teams they need themselves, so an empty, migrated database is enough. The frontend uses Vitest and React Testing Library.
 
-CI (`.github/workflows/ci.yml`) runs the same commands on every push to `main` and every pull request, with a Postgres service (migrated, with the teams seeded) so the database tests run too.
+## Lint and type checks (backend)
+
+The linters live in `backend/requirements-dev.txt`, which the backend image doesn't install. Run them from `backend/` in a Python 3.12 virtualenv:
+
+```bash
+pip install -r requirements-dev.txt
+ruff check .
+ruff format --check .
+mypy
+```
+
+Ruff and mypy are configured in `backend/pyproject.toml`. `ruff format .` and `ruff check --fix .` fix most of what they report.
+
+## CI
+
+GitHub Actions (`.github/workflows/ci.yml`) runs on every pull request and every push to `main`, in two jobs:
+
+- **Backend:** applies the migrations to a throwaway Postgres (with a Redis alongside), then runs `pytest`, `ruff check`, `ruff format --check` and `mypy`. It sets `REQUIRE_POSTGRES=1`, so the database tests fail rather than skip if Postgres is unreachable.
+- **Frontend:** runs `npm run typecheck`, `npm test` and `npm run build`, then exports the backend's OpenAPI schema and runs `npm run check:api` against it, so the committed API types can't drift from the backend.
 
 ## Database migrations (Alembic)
 

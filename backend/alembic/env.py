@@ -3,10 +3,10 @@
 import asyncio
 from logging.config import fileConfig
 
-from alembic import context
 from sqlalchemy.engine import Connection
 
 import app.models  # noqa: F401  (registers the tables on Base.metadata)
+from alembic import context
 from app.db import Base, engine
 
 if context.config.config_file_name:

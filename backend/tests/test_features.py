@@ -106,7 +106,9 @@ def frame(rows: list[dict]) -> pd.DataFrame:
 
 @pytest.mark.parametrize("mode", ["rewrite", "blank"])
 @pytest.mark.parametrize(
-    "elo", [EloConfig(), EloConfig(k=30, season_regression=0.3, promoted_offset=-80)], ids=["v1", "v2"]
+    "elo",
+    [EloConfig(), EloConfig(k=30, season_regression=0.3, promoted_offset=-80)],
+    ids=["v1", "v2"],
 )
 def test_no_feature_uses_the_match_itself_or_later(mode: str, elo: EloConfig) -> None:
     league = make_league(seed=1)
@@ -327,7 +329,9 @@ def test_form_is_average_of_previous_five_matches() -> None:
     assert form.loc[6, "home_form_points"] == pytest.approx(np.mean(points))
     # Shots on target in `fixture` are goals + 2 for, goals + 1 against.
     assert form.loc[6, "home_form_sot_for"] == pytest.approx(np.mean([h + 2 for h, _ in window]))
-    assert form.loc[6, "home_form_sot_against"] == pytest.approx(np.mean([a + 1 for _, a in window]))
+    assert form.loc[6, "home_form_sot_against"] == pytest.approx(
+        np.mean([a + 1 for _, a in window])
+    )
     # Going into the 2nd match, only the 1st counts (a 1-0 win).
     assert form.loc[1, "home_form_points"] == 3
 
@@ -386,7 +390,9 @@ def test_build_features_output_shape() -> None:
     assert set(features["result"].dropna()) <= {"H", "D", "A"}
     # Elo is always defined; form is missing only for each team's very first match.
     assert features[["home_elo", "away_elo"]].notna().all(axis=None)
-    missing_form = features["home_form_points"].isna().sum() + features["away_form_points"].isna().sum()
+    missing_form = (
+        features["home_form_points"].isna().sum() + features["away_form_points"].isna().sum()
+    )
     assert missing_form == league[["home_team_id", "away_team_id"]].stack().nunique()
 
 
@@ -436,8 +442,13 @@ def test_hypothetical_match_rejects_a_team_playing_itself() -> None:
 
 @pytest.mark.parametrize(
     "day,season",
-    [(date(2026, 9, 23), "2026-27"), (date(2027, 5, 20), "2026-27"), (date(2026, 7, 1), "2026-27"),
-     (date(2026, 6, 30), "2025-26"), (date(2009, 8, 1), "2009-10")],
+    [
+        (date(2026, 9, 23), "2026-27"),
+        (date(2027, 5, 20), "2026-27"),
+        (date(2026, 7, 1), "2026-27"),
+        (date(2026, 6, 30), "2025-26"),
+        (date(2009, 8, 1), "2009-10"),
+    ],
 )
 def test_season_for_date(day: date, season: str) -> None:
     assert season_for_date(day) == season

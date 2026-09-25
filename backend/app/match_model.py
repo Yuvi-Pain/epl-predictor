@@ -39,7 +39,7 @@ def make_pipeline(c: float = 1.0) -> Pipeline:
 
 
 def one_hot(results: pd.Series) -> np.ndarray:
-    """"H"/"D"/"A" labels -> 0/1 matrix in OUTCOMES order."""
+    """ "H"/"D"/"A" labels -> 0/1 matrix in OUTCOMES order."""
     unknown = set(results) - set(OUTCOMES)
     if unknown:
         raise ValueError(f"unexpected results: {sorted(map(str, unknown))}")

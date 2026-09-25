@@ -151,6 +151,7 @@ def elo_ratings(matches: pd.DataFrame, config: EloConfig = EloConfig()) -> pd.Da
         # Positional row numbers for this season, grouped by date in date order.
         season_dates = dates[in_season]
         positions = np.flatnonzero(in_season)
+        rows: pd.Series
         for _, rows in pd.Series(positions, index=season_dates.values).groupby(level=0):
             rows_np = rows.to_numpy()
             # 1) Read every match's pre-match ratings before any result that day is applied.
