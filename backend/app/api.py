@@ -1,8 +1,9 @@
-"""Prediction endpoints: teams, live predictions, upcoming fixtures, season backtest, model info.
+"""Prediction endpoints: teams, live predictions, upcoming fixtures, season backtest,
+model info, and the track record of predictions saved before kickoff.
 
-/teams, /predict, /matches and /fixtures/upcoming are cached in Redis (see
-app/cache.py). Their keys include the data version from Postgres and, where
-the model is used, the model's version and training time.
+/teams, /predict, /matches, /fixtures/upcoming and /track-record are cached in
+Redis (see app/cache.py). Their keys include the data version from Postgres
+and, where the model is used, the model's version and training time.
 """
 
 import asyncio
@@ -19,6 +20,7 @@ from app.cache import (
     MATCHES_TTL,
     PREDICT_TTL,
     TEAMS_TTL,
+    TRACK_RECORD_TTL,
     ResponseCache,
     cache_key,
     get_cache,
@@ -43,9 +45,11 @@ from app.schemas import (
     SplitMetrics,
     Team,
     TeamList,
+    TrackRecord,
     UpcomingFixture,
     UpcomingFixtures,
 )
+from app.tracking import track_record
 
 router = APIRouter()
 
@@ -74,8 +78,15 @@ def get_predictor(request: Request) -> Predictor:
     return predictor
 
 
+def live_model_version(request: Request) -> str | None:
+    """The version of the model users see, or None if none is loaded."""
+    predictor: Predictor | None = getattr(request.app.state, "predictor", None)
+    return None if predictor is None else predictor.version
+
+
 RepoDep = Annotated[Repository, Depends(get_repository)]
 PredictorDep = Annotated[Predictor, Depends(get_predictor)]
+LiveVersionDep = Annotated[str | None, Depends(live_model_version)]
 CacheDep = Annotated[ResponseCache, Depends(get_cache)]
 CACHE_HEADER_DOC = {
     "X-Cache": {"description": "HIT if served from Redis, MISS if built for this request."}
@@ -351,6 +362,51 @@ async def upcoming_fixtures(
     )
     return await cache.get_or_build(
         key, FIXTURES_TTL, lambda: _build_upcoming(repo, predictor, today)
+    )
+
+
+async def _build_track_record(
+    repo: Repository, live_version: str | None, season: str | None
+) -> TrackRecord:
+    predictions = await repo.load_predictions()
+    matches = await repo.load_matches()
+    teams = {t.id: t for t in await repo.list_teams()}
+    return await asyncio.to_thread(
+        track_record, predictions, matches, teams, live_version, season
+    )
+
+
+@router.get(
+    "/track-record",
+    response_model=TrackRecord,
+    tags=["predictions"],
+    responses={200: {"headers": CACHE_HEADER_DOC}},
+)
+async def get_track_record(
+    repo: RepoDep,
+    cache: CacheDep,
+    live_version: LiveVersionDep,
+    season: Annotated[
+        str | None,
+        Query(
+            pattern=r"^\d{4}-\d{2}$",
+            description='e.g. "2026-27". Defaults to the latest season with saved predictions.',
+        ),
+    ] = None,
+) -> Response:
+    """How the predictions saved before kickoff did, per model and against the bookmaker.
+
+    The worker saves every tracked model's prediction shortly before kickoff
+    and never changes it. Only predictions saved before kickoff for matches
+    that have been played are scored; postponed matches wait until they are
+    played. Unlike /matches, nothing here is recomputed after the fact.
+    """
+    data_version = await repo.data_version()
+    key = cache_key(
+        "track-record", f"live={live_version}", f"d{data_version}", season or "latest"
+    )
+    return await cache.get_or_build(
+        key, TRACK_RECORD_TTL, lambda: _build_track_record(repo, live_version, season)
     )
 
 

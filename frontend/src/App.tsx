@@ -8,6 +8,7 @@ import { FixturesPage } from "./pages/FixturesPage";
 import { ModelPage } from "./pages/ModelPage";
 import { PredictPage } from "./pages/PredictPage";
 import { SeasonPage } from "./pages/SeasonPage";
+import { TrackRecordPage } from "./pages/TrackRecordPage";
 
 /**
  * The fixtures list. The Predict page used to live at "/", so a shared link
@@ -29,6 +30,7 @@ export function AppRoutes() {
         <Route index element={<Home />} />
         <Route path="predict" element={<PredictPage />} />
         <Route path="season" element={<SeasonPage />} />
+        <Route path="track-record" element={<TrackRecordPage />} />
         <Route path="model" element={<ModelPage />} />
         <Route
           path="*"

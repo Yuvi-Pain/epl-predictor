@@ -17,6 +17,11 @@
   --draw: #7a7f86;
   --away: #c2410c;
 
+  /* Track record chart: one colour per entity (live model, shadow model, bookmaker). */
+  --series-live: #2a78d6;
+  --series-shadow: #eb6834;
+  --series-bookmaker: #1baf7a;
+
   --good: #0d6b3b;
   --good-bg: #dcefe2;
   --bad: #b42318;
@@ -55,6 +60,9 @@
     --home: #6ea4f5;
     --draw: #9aa3ab;
     --away: #f5894f;
+    --series-live: #3987e5;
+    --series-shadow: #d95926;
+    --series-bookmaker: #199e70;
     --good: #5fd894;
     --good-bg: #123322;
     --bad: #ff8f84;
@@ -79,6 +87,9 @@
   --home: #6ea4f5;
   --draw: #9aa3ab;
   --away: #f5894f;
+  --series-live: #3987e5;
+  --series-shadow: #d95926;
+  --series-bookmaker: #199e70;
   --good: #5fd894;
   --good-bg: #123322;
   --bad: #ff8f84;
@@ -217,7 +228,7 @@ a {
 
 .nav {
   display: flex;
-  gap: var(--space-1);
+  gap: 0;
   order: 3;
   width: 100%;
   overflow-x: auto;
@@ -225,13 +236,13 @@ a {
 
 .nav a {
   flex: 1 0 auto;
-  /* Narrow sides on phones, so all four links fit across a 375px screen. */
-  padding: var(--space-2) var(--space-2);
+  /* Narrow sides and smaller text on phones, so all five links fit across a 375px screen. */
+  padding: var(--space-2) var(--space-1);
   font-family: var(--font-display);
   font-weight: 600;
-  font-size: 1.125rem;
+  font-size: 0.9375rem;
   text-transform: uppercase;
-  letter-spacing: 0.03em;
+  letter-spacing: 0.02em;
   text-decoration: none;
   text-align: center;
   color: var(--ink-soft);
@@ -251,10 +262,13 @@ a {
   .nav {
     order: 0;
     width: auto;
+    gap: var(--space-1);
   }
   .nav a {
     flex: 0 0 auto;
     padding: var(--space-2) var(--space-3);
+    font-size: 1.125rem;
+    letter-spacing: 0.03em;
   }
 }
 
@@ -1299,4 +1313,239 @@ details > summary {
 .theme-toggle svg {
   width: 1.125rem;
   height: 1.125rem;
+}
+
+/* ---------- Track record page ---------- */
+
+.counts {
+  list-style: none;
+  margin: var(--space-3) 0 0;
+  padding: 0;
+  display: grid;
+  gap: var(--space-1);
+}
+
+.chart {
+  margin: 0;
+  display: grid;
+  gap: var(--space-3);
+}
+
+.chart__legend {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-1) var(--space-4);
+  font-size: 0.875rem;
+  color: var(--ink-soft);
+}
+
+.chart__legend li {
+  display: inline-flex;
+  align-items: center;
+}
+
+/* A short stroke in the series colour: identity sits beside the text, never in it. */
+.chart__swatch {
+  display: inline-block;
+  flex: none;
+  width: 1.25rem;
+  height: 0;
+  margin-right: var(--space-2);
+  vertical-align: middle;
+  border-top: 3px solid var(--series-shadow);
+}
+
+.chart__swatch--live {
+  border-top-color: var(--series-live);
+}
+
+.chart__swatch--bookmaker {
+  border-top: 3px dashed var(--series-bookmaker);
+}
+
+.chart__plot {
+  position: relative;
+}
+
+.chart__plot svg {
+  display: block;
+  width: 100%;
+  height: auto;
+  overflow: visible;
+  touch-action: pan-y;
+}
+
+.chart__plot svg:focus-visible {
+  outline: 2px solid var(--focus);
+  outline-offset: 4px;
+  border-radius: var(--radius-sm);
+}
+
+.chart__grid {
+  stroke: var(--line);
+  stroke-width: 1;
+}
+
+.chart__tick,
+.chart__label {
+  fill: var(--ink-soft);
+  font-size: 12px;
+}
+
+.chart__label {
+  fill: var(--ink);
+  font-weight: 600;
+}
+
+.chart__crosshair {
+  stroke: var(--line-strong);
+  stroke-width: 1;
+}
+
+.chart__series {
+  --series: var(--series-shadow);
+}
+
+.chart__series--live {
+  --series: var(--series-live);
+}
+
+.chart__series--bookmaker {
+  --series: var(--series-bookmaker);
+}
+
+.chart__line {
+  fill: none;
+  stroke: var(--series);
+  stroke-width: 2;
+  stroke-linejoin: round;
+  stroke-linecap: round;
+}
+
+.chart__series--bookmaker .chart__line,
+.chart__series--bookmaker .chart__label-key {
+  stroke-dasharray: 6 4;
+}
+
+.chart__label-key {
+  stroke: var(--series);
+  stroke-width: 3;
+}
+
+.chart__dot {
+  fill: var(--series);
+  stroke: var(--surface);
+  stroke-width: 2;
+}
+
+.chart__tooltip {
+  position: absolute;
+  top: 0;
+  transform: translateX(12px);
+  pointer-events: none;
+  min-width: 11rem;
+  padding: var(--space-2) var(--space-3);
+  background: var(--surface);
+  border: 1px solid var(--line-strong);
+  border-radius: var(--radius);
+  box-shadow: 0 4px 16px rgb(0 0 0 / 0.12);
+  font-size: 0.8125rem;
+}
+
+.chart__tooltip[data-flip] {
+  transform: translateX(calc(-100% - 12px));
+}
+
+.chart__tooltip-head {
+  margin: 0 0 var(--space-1);
+  color: var(--ink-soft);
+}
+
+.chart__tooltip ul {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: grid;
+  gap: 2px;
+}
+
+.chart__tooltip li {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+}
+
+.chart__tooltip .chart__swatch {
+  margin-right: 0;
+}
+
+
+.metrics th .chart__swatch {
+  width: 0.875rem;
+}
+
+.tracked {
+  display: grid;
+  gap: var(--space-3);
+  padding: var(--space-3) 0;
+  border-bottom: 1px solid var(--line);
+}
+
+@media (min-width: 48rem) {
+  .tracked {
+    grid-template-columns: minmax(0, 1fr) minmax(0, 1.8fr);
+    align-items: start;
+  }
+}
+
+.tracked__picks {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: grid;
+  gap: var(--space-2);
+  font-size: 0.875rem;
+}
+
+.tracked .result__teams {
+  grid-area: auto;
+}
+
+/* Who predicted over what they picked, with the verdict on the right. */
+.tracked__pick {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  grid-template-areas:
+    "who verdict"
+    "pick verdict";
+  align-items: center;
+  gap: 0 var(--space-3);
+}
+
+.tracked__pick > :nth-child(2) {
+  grid-area: pick;
+}
+
+.tracked__pick > :nth-child(3) {
+  grid-area: verdict;
+  justify-self: end;
+}
+
+.tracked__who {
+  grid-area: who;
+  display: inline-flex;
+  align-items: center;
+  color: var(--ink-soft);
+}
+
+.tracked__when {
+  display: block;
+}
+
+.tracked .pill {
+  white-space: normal;
+  text-align: right;
 }

@@ -2,10 +2,24 @@ import { screen, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { describe, expect, it } from "vitest";
 import { AppRoutes } from "./App";
-import { modelInfo, prediction, teams, upcoming } from "./test/fixtures";
+import { modelInfo, prediction, teams, trackRecord, upcoming } from "./test/fixtures";
 import { mockApi, renderWithProviders } from "./test/utils";
 
 describe("App routes", () => {
+  it("links to the track record from the main nav", async () => {
+    const user = userEvent.setup();
+    mockApi({
+      "/api/fixtures/upcoming": { body: upcoming },
+      "/api/track-record": { body: trackRecord },
+    });
+    renderWithProviders(<AppRoutes />);
+
+    const nav = screen.getByRole("navigation", { name: "Main" });
+    await user.click(within(nav).getByRole("link", { name: "Track record" }));
+    expect(screen.getByRole("heading", { level: 1, name: "Track record" })).toBeInTheDocument();
+    expect(await screen.findByRole("region", { name: "Scores so far" })).toBeInTheDocument();
+  });
+
   it("opens on the upcoming fixtures and navigates with the main nav", async () => {
     const user = userEvent.setup();
     mockApi({

@@ -13,6 +13,7 @@ export const queryKeys = {
   matches: (season: string) => ["matches", season] as const,
   model: ["model"] as const,
   upcoming: ["fixtures", "upcoming"] as const,
+  trackRecord: ["track-record"] as const,
 };
 
 export function useTeams() {
@@ -55,6 +56,15 @@ export function useUpcomingFixtures() {
   return useQuery({
     queryKey: queryKeys.upcoming,
     queryFn: ({ signal }) => api.upcoming(signal),
+    staleTime: 10 * MINUTE,
+  });
+}
+
+/** Saved predictions and how they scored. Changes when the worker saves or results arrive. */
+export function useTrackRecord() {
+  return useQuery({
+    queryKey: queryKeys.trackRecord,
+    queryFn: ({ signal }) => api.trackRecord(signal),
     staleTime: 10 * MINUTE,
   });
 }

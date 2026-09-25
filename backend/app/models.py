@@ -1,4 +1,4 @@
-"""Database tables for teams and match results."""
+"""Database tables for teams, match results and saved predictions."""
 
 from datetime import date, datetime
 
@@ -12,6 +12,7 @@ from sqlalchemy import (
     SmallInteger,
     String,
     UniqueConstraint,
+    func,
 )
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
@@ -94,3 +95,33 @@ class DataVersion(Base):
 
     id: Mapped[int] = mapped_column(SmallInteger, primary_key=True)
     version: Mapped[int] = mapped_column(BigInteger)
+
+
+class Prediction(Base):
+    """A model's prediction for one match, saved by the worker before kickoff.
+
+    One row per (match, model version), and rows are frozen: a trigger (see the
+    migration) rejects every UPDATE and DELETE, and the worker inserts with
+    ON CONFLICT DO NOTHING, so the first prediction saved is the one scored.
+    """
+
+    __tablename__ = "predictions"
+    __table_args__ = (
+        UniqueConstraint("match_id", "model_version"),
+        CheckConstraint(
+            "p_home BETWEEN 0 AND 1 AND p_draw BETWEEN 0 AND 1 AND p_away BETWEEN 0 AND 1",
+            name="probabilities_in_range",
+        ),
+        CheckConstraint("abs(p_home + p_draw + p_away - 1) < 1e-6", name="probabilities_sum_to_1"),
+    )
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    match_id: Mapped[int] = mapped_column(ForeignKey("matches.id"), index=True)
+    model_version: Mapped[str] = mapped_column(String(16))
+    p_home: Mapped[float] = mapped_column(Double)
+    p_draw: Mapped[float] = mapped_column(Double)
+    p_away: Mapped[float] = mapped_column(Double)
+    # Postgres sets this at insert time; callers never pass it, so it cannot be backdated.
+    predicted_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), server_default=func.now()
+    )

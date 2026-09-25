@@ -1,4 +1,4 @@
-"""Read teams and matches from Postgres.
+"""Read teams, matches and saved predictions from Postgres.
 
 Training (`scripts/train_model.py`) and the API both load matches through
 `load_matches`, so the model is always fed the same columns and dtypes.
@@ -10,7 +10,7 @@ import pandas as pd
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncConnection
 
-from app.models import DataVersion, Match, Team
+from app.models import DataVersion, Match, Prediction, Team
 
 # Nullable integers: unplayed matches have no goals or shots, and only fixtures
 # from football-data.org have a matchday.
@@ -65,6 +65,12 @@ class Repository:
         """See the module-level `load_matches`."""
         return await load_matches(self._conn)
 
+    async def load_predictions(self) -> pd.DataFrame:
+        """Every saved prediction, one row per (match, model version)."""
+        columns = [c for c in Prediction.__table__.columns if c.name != "id"]
+        rows = (await self._conn.execute(select(*columns).order_by(Prediction.id))).all()
+        return pd.DataFrame(rows, columns=[c.name for c in columns])
+
     async def data_version(self) -> int:
-        """The counter the history loader bumps whenever teams or matches change."""
+        """The counter bumped whenever teams, matches or saved predictions change."""
         return (await self._conn.execute(select(DataVersion.version))).scalar_one()

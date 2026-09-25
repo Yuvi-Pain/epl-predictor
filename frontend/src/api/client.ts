@@ -17,6 +17,13 @@ export type Metrics = Schemas["Metrics"];
 export type SplitMetrics = Schemas["SplitMetrics"];
 export type Outcome = MatchResult["actual"];
 export type OutcomeProbabilities = Schemas["OutcomeProbabilities"];
+export type TrackRecord = Schemas["TrackRecord"];
+export type TrackedModel = Schemas["TrackedModel"];
+export type TrackedMatch = Schemas["TrackedMatch"];
+export type SavedPrediction = Schemas["SavedPrediction"];
+export type RunningLogLoss = Schemas["RunningLogLoss"];
+export type TrackRecordScore = Schemas["TrackRecordScore"];
+export type PredictionStatus = SavedPrediction["status"];
 
 type Query<P extends keyof paths> = paths[P]["get"]["parameters"]["query"];
 type Ok<P extends keyof paths> = paths[P]["get"]["responses"][200]["content"]["application/json"];
@@ -69,4 +76,5 @@ export const api = {
   matches: (season: string, signal?: AbortSignal) => get("/matches", { season }, signal),
   model: (signal?: AbortSignal) => get("/model", undefined, signal),
   upcoming: (signal?: AbortSignal) => get("/fixtures/upcoming", undefined, signal),
+  trackRecord: (signal?: AbortSignal) => get("/track-record", {}, signal),
 };

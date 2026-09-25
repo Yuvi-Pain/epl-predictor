@@ -67,14 +67,15 @@ FOOTBALL_DATA_API_KEY=your-key
 
 The key is only read from the environment and sent in the `X-Auth-Token` header; it is never logged.
 
-The `worker` service in `docker-compose.yml` runs two scheduled jobs from the backend image (`backend/scripts/worker.py`):
+The `worker` service in `docker-compose.yml` runs three scheduled jobs from the backend image (`backend/scripts/worker.py`):
 
 | Job | Every | Does |
 |-----|-------|------|
 | fixtures | `FIXTURES_REFRESH_HOURS` (default 6) | Fetches the current season's fixtures (one request) and upserts them as matches with no goals, plus their matchday, kick-off time and status |
 | history | `HISTORY_REFRESH_HOURS` (default 24) | Reruns the history loader, which fills in results as football-data.co.uk publishes them |
+| predictions | `PREDICTIONS_REFRESH_HOURS` (default 1) | Saves every tracked model's prediction for fixtures kicking off within `PREDICTION_LEAD_HOURS` (default 24). See [Track record](#track-record) |
 
-Both run once when the worker starts. Each bumps the data version when it changes anything, so the API's cached responses are rebuilt. A failed job is logged and retried after 15 minutes; the worker keeps running. Without an API key the fixtures job is skipped with a warning and the history job still runs.
+All run once when the worker starts, in that order. Each bumps the data version when it changes anything, so the API's cached responses are rebuilt. A failed job is logged and retried after 15 minutes; the worker keeps running. Without an API key the fixtures and predictions jobs are skipped with a warning (predictions need kick-off times, which only the fixture list has) and the history job still runs.
 
 Results only ever come from the CSVs, which also have the shots the model needs. The fixture refresh never writes goals, and for a played match it keeps the CSV's date. Team names go through the same alias table as the CSVs; if the API uses a new spelling, the refresh fails with `Unknown team names`, writes nothing, and you add the name to `backend/app/teams.py`.
 
@@ -123,14 +124,23 @@ The backend loads the model once at startup (`MODEL_VERSION` in `.env`, default 
 | `GET /matches?season=2026-27` | Each played match in the season with the model's pre-match prediction and the actual result. `model_split` says whether the model trained on that season (then the predictions flatter it) |
 | `GET /fixtures/upcoming` | The next matchweek's unplayed fixtures, soonest first, each with win/draw/loss probabilities. An empty list (not an error) if no fixtures are stored yet |
 | `GET /model` | Model version, training time, and validation/test scores next to the baselines |
+| `GET /track-record` | Predictions saved before kickoff and how they scored: per-model and bookmaker accuracy, log loss and Brier on the same matches, a running log loss per match date, and every saved prediction with its status. Optional `season=2026-27` (default: latest with predictions). Works without a model loaded |
 
 Errors: `400` if home and away are the same team, `404` for an unknown team id or a season with no matches, `422` for malformed parameters, `503` from `/predict`, `/matches`, `/fixtures/upcoming` and `/model` when no model file is loaded (`/health` and `/teams` still work). Full schemas are at http://localhost:8000/docs.
 
 Live predictions build features with the same `build_features` function used in training: the hypothetical match is added to the history and featurised alongside it. Elo settings and the form window are read from the model file, not the code defaults.
 
+## Track record
+
+`/matches` and the This season page recompute the model's predictions from history, so they can change when the model changes. The track record can't: it only uses predictions saved before kickoff.
+
+- **Saving.** The worker's predictions job saves one row per (match, model version) in the `predictions` table for fixtures that are still scheduled and kick off within the next `PREDICTION_LEAD_HOURS`. `TRACKED_MODEL_VERSIONS` (default `v2,v1`) lists the models: `v2` is live (what users see), `v1` runs in **shadow mode** (saved and scored the same way, never shown). Postgres stamps `predicted_at` itself and the insert only keeps rows whose match has not kicked off by Postgres's clock.
+- **Frozen.** A trigger rejects every `UPDATE` and `DELETE` on `predictions`, and a second save for the same match and model is ignored (`ON CONFLICT DO NOTHING`), so the first prediction is the one scored. To remove the table entirely, `alembic downgrade d31a7c5e9f82`.
+- **Scoring.** A prediction is *scored* once the result is in, *pending* before that, *postponed* while the match is postponed or suspended (it counts once the rescheduled match is played), and *late* if it was saved at or after kickoff (possible only if kickoff is later moved earlier; never counted). Models and the bookmaker (Bet365, margin removed) are compared on exactly the same matches: those every model predicted before kickoff, with a result and odds.
+
 ## Response caching (Redis)
 
-`/teams`, `/predict`, `/matches` and `/fixtures/upcoming` are cached in Redis using cache-aside: look in Redis first; on a miss, build the response from Postgres and the model, store it with a TTL, and return it. Each response has an `X-Cache: HIT` or `X-Cache: MISS` header:
+`/teams`, `/predict`, `/matches`, `/fixtures/upcoming` and `/track-record` are cached in Redis using cache-aside: look in Redis first; on a miss, build the response from Postgres and the model, store it with a TTL, and return it. Each response has an `X-Cache: HIT` or `X-Cache: MISS` header:
 
 ```bash
 curl -si "localhost:8000/predict?home=1&away=17" | grep -i x-cache
@@ -139,7 +149,7 @@ curl -si "localhost:8000/predict?home=1&away=17" | grep -i x-cache
 **Keys include versions, so nothing is ever deleted.** A key looks like `epl:v1:predict:mv1@<trained_at>:d7:1:17:2026-10-04`:
 
 - `mv1@<trained_at>` is the loaded model. Training a new version, or retraining with `--force`, changes it.
-- `d7` is the **data version**, a counter in the `data_version` table. `load_history` and the fixture refresh bump it in the same transaction as their match writes, but only when a team or match was actually inserted or updated.
+- `d7` is the **data version**, a counter in the `data_version` table. `load_history`, the fixture refresh and the predictions job bump it in the same transaction as their match writes, but only when a team or match was actually inserted or updated.
 - After that come the request parameters. For `/predict`, a missing `as_of` is replaced with today's date before the key is built, so "today" gets a new key each day.
 
 When the data or model changes, requests look up keys that don't exist yet. They miss and are rebuilt from the new data. Old entries are never read again and expire on their TTL. Errors (400/404) are never cached.
@@ -149,6 +159,7 @@ When the data or model changes, requests look up keys that don't exist yet. They
 | `/teams` | 24 h | Tiny and almost never changes (teams are only added for a new season). The data version already covers changes. |
 | `/matches` | 6 h | The most expensive response (features for every match since 2015), with about 12 possible keys. Keeping it long is cheap. |
 | `/fixtures/upcoming` | 6 h | As expensive as `/matches` (it builds the same features), but only one key a day: today's date is in the key, so fixtures already played drop off the next day. |
+| `/track-record` | 6 h | One key per season. It only changes when predictions are saved or results come in, and both bump the data version. |
 | `/predict` | 1 h | Many possible keys (team pairs × dates), each fairly cheap to rebuild. A short TTL keeps memory use small while still covering the repeat requests around a match day. |
 
 Correctness never depends on the TTLs: the versions in the key do that. TTLs only decide how long unused entries take up memory. Redis is also capped at 128 MB with LRU eviction (see `docker-compose.yml`).
@@ -166,13 +177,14 @@ docker-compose.yml
 
 ## Frontend
 
-Four pages, served by Vite at http://localhost:5173:
+Five pages, served by Vite at http://localhost:5173:
 
 | Page | Shows |
 |------|-------|
 | Fixtures (`/`) | The next matchweek with a probability bar for each match. Each links to its prediction on the Predict page |
 | Predict (`/predict`) | Pick a home and away team for win/draw/loss chances and the Elo and form numbers behind them. The teams are kept in the URL (`/predict?home=1&away=17`), so a prediction can be shared. Old `/?home=1&away=17` links are redirected here |
 | This season (`/season`) | Every 2026-27 match played so far, the model's pre-match pick next to the result, and its running record |
+| Track record (`/track-record`) | Predictions saved before kickoff: scores for the live model, the shadow model and the bookmaker on the same matches, a chart of their running log loss over the season (with a table view), and every saved prediction next to the result |
 | Model (`/model`) | The loaded model's version and seasons, and its test scores against the baselines and the bookmaker |
 
 The browser calls `/api/...` on the Vite server, which strips `/api` and forwards to the backend.

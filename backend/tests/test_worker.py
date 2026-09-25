@@ -3,11 +3,13 @@
 import asyncio
 import logging
 from datetime import timedelta
+from pathlib import Path
 
 import pytest
 
 from app.football_data_org import API_KEY_ENV, RateLimiter
-from scripts.worker import Job, build_jobs, run_due
+from scripts import worker
+from scripts.worker import Job, build_jobs, load_tracked_predictors, run_due, tracked_versions
 
 
 class Clock:
@@ -81,5 +83,27 @@ def test_intervals_come_from_the_environment(monkeypatch: pytest.MonkeyPatch) ->
     monkeypatch.setenv(API_KEY_ENV, "a-real-looking-key")
     monkeypatch.setenv("FIXTURES_REFRESH_HOURS", "8")
     monkeypatch.delenv("HISTORY_REFRESH_HOURS", raising=False)
+    monkeypatch.delenv("PREDICTIONS_REFRESH_HOURS", raising=False)
     jobs = {j.name: j.every for j in build_jobs(RateLimiter())}
-    assert jobs == {"fixtures": timedelta(hours=8), "history": timedelta(hours=24)}
+    assert jobs == {
+        "fixtures": timedelta(hours=8),
+        "history": timedelta(hours=24),
+        "predictions": timedelta(hours=1),
+    }
+
+
+def test_predictions_run_after_fixtures_and_results(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setenv(API_KEY_ENV, "a-real-looking-key")
+    assert [j.name for j in build_jobs(RateLimiter())] == ["fixtures", "history", "predictions"]
+
+
+def test_tracked_models_default_to_live_v2_and_shadow_v1(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.delenv("TRACKED_MODEL_VERSIONS", raising=False)
+    assert tracked_versions() == ["v2", "v1"]
+    monkeypatch.setenv("TRACKED_MODEL_VERSIONS", " v3, v2 ,")
+    assert tracked_versions() == ["v3", "v2"]
+
+
+def test_a_missing_model_file_is_skipped(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
+    monkeypatch.setattr(worker, "MODELS_DIR", tmp_path)
+    assert load_tracked_predictors(["v1", "v2"]) == []
