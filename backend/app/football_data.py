@@ -110,7 +110,9 @@ def parse_match_dates(raw: pd.Series) -> pd.Series:
     """
     text = raw.str.strip()
     four_digit_year = text.str.fullmatch(r"\d{1,2}/\d{1,2}/\d{4}", na=False)
-    parsed = pd.to_datetime(text.where(four_digit_year), format="%d/%m/%Y", errors="coerce")
+    parsed: pd.Series = pd.to_datetime(
+        text.where(four_digit_year), format="%d/%m/%Y", errors="coerce"
+    )
     parsed = parsed.fillna(
         pd.to_datetime(text.where(~four_digit_year), format="%d/%m/%y", errors="coerce")
     )

@@ -25,6 +25,7 @@ from app.cache import (
     get_cache,
 )
 from app.predictor import Predictor
+
 from fakes import FakeRepository, StubModel, make_bundle, make_matches, match
 
 PREDICT = ("/predict", {"home": 1, "away": 3, "as_of": "2026-09-26"})

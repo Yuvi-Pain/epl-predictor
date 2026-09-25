@@ -5,7 +5,7 @@ dependency. The fake data has the 2026-27 results from fakes.make_matches plus
 the unplayed fixtures below.
 """
 
-from datetime import date, datetime, timezone
+from datetime import UTC, date, datetime
 from typing import Any
 
 import numpy as np
@@ -17,6 +17,7 @@ from fastapi.testclient import TestClient
 from app import main
 from app.api import uk_today
 from app.cache import FIXTURES_TTL
+
 from fakes import FakeRepository, StubModel, make_matches, match
 
 TODAY = date(2026, 9, 24)
@@ -24,7 +25,7 @@ UPCOMING = "/fixtures/upcoming"
 
 
 def kickoff(day: date, hour: int) -> datetime:
-    return datetime(day.year, day.month, day.day, hour, tzinfo=timezone.utc)
+    return datetime(day.year, day.month, day.day, hour, tzinfo=UTC)
 
 
 def fixture(id: int, day: date, home: int, away: int, **kw: Any) -> dict[str, Any]:

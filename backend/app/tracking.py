@@ -192,7 +192,7 @@ def _prediction(row: pd.Series) -> PredictionSchema:
     proba = row[PROBA_COLUMNS].to_numpy(dtype=float)
     return PredictionSchema(
         probabilities=_probabilities(row["p_home"], row["p_draw"], row["p_away"]),
-        most_likely=OUTCOME_NAMES[OUTCOMES[int(np.argmax(proba))]],  # type: ignore[arg-type]
+        most_likely=OUTCOME_NAMES[OUTCOMES[int(np.argmax(proba))]],
     )
 
 
@@ -289,7 +289,7 @@ def _tracked_match(group: pd.DataFrame, teams: Mapping[int, TeamRow]) -> Tracked
             if played
             else None
         ),
-        actual=actual,  # type: ignore[arg-type]
+        actual=actual,
         bookmaker=bookmaker,
         predictions=predictions,
     )

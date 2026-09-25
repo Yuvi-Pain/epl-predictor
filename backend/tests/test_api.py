@@ -18,8 +18,8 @@ from app import main
 from app.api import get_predictor, get_repository
 from app.features import DIFF_FEATURE_COLUMNS, FEATURE_COLUMNS
 from app.predictor import Predictor
-from fakes import FakeRepository, StubModel, make_bundle, make_matches, match, metrics
 
+from fakes import FakeRepository, StubModel, make_bundle, make_matches, match, metrics
 
 # --- /teams ------------------------------------------------------------------------
 
@@ -62,20 +62,30 @@ def test_predict_returns_probabilities_and_features(client: TestClient, model: S
 
 def test_predict_passes_a_v2_model_only_its_difference_features(repo: FakeRepository) -> None:
     model = StubModel()
-    predictor = Predictor.from_bundle({**make_bundle(model), "feature_columns": DIFF_FEATURE_COLUMNS})
+    predictor = Predictor.from_bundle(
+        {**make_bundle(model), "feature_columns": DIFF_FEATURE_COLUMNS}
+    )
     main.app.dependency_overrides[get_repository] = lambda: repo
     main.app.dependency_overrides[get_predictor] = lambda: predictor
-    body = TestClient(main.app).get("/predict", params={"home": 1, "away": 3, "as_of": "2026-09-26"}).json()
+    body = (
+        TestClient(main.app)
+        .get("/predict", params={"home": 1, "away": 3, "as_of": "2026-09-26"})
+        .json()
+    )
 
     (X,) = model.calls
     assert list(X.columns) == DIFF_FEATURE_COLUMNS
-    assert X.iloc[0]["elo_diff"] == pytest.approx(body["features"]["home_elo"] - body["features"]["away_elo"])
+    assert X.iloc[0]["elo_diff"] == pytest.approx(
+        body["features"]["home_elo"] - body["features"]["away_elo"]
+    )
     # The response still shows each team's own numbers, as for v1.
     assert set(body["features"]) == set(FEATURE_COLUMNS)
 
 
 def test_predict_only_uses_results_before_as_of(client: TestClient) -> None:
-    before_2026 = client.get("/predict", params={"home": 1, "away": 3, "as_of": "2026-08-15"}).json()
+    before_2026 = client.get(
+        "/predict", params={"home": 1, "away": 3, "as_of": "2026-08-15"}
+    ).json()
     # On 15 Aug 2026 Arsenal's 3-1 that day must not count yet: W 2-0, D 2-2 only.
     assert before_2026["features"]["home_form_points"] == pytest.approx(2.0)
 
@@ -101,7 +111,9 @@ def test_predict_same_team_is_400(client: TestClient) -> None:
 
 
 @pytest.mark.parametrize("home,away,missing", [(1, 99, "99"), (98, 2, "98"), (98, 99, "98, 99")])
-def test_predict_unknown_team_is_404(client: TestClient, home: int, away: int, missing: str) -> None:
+def test_predict_unknown_team_is_404(
+    client: TestClient, home: int, away: int, missing: str
+) -> None:
     r = client.get("/predict", params={"home": home, "away": away})
     assert r.status_code == 404
     assert r.json()["detail"] == f"unknown team id(s): {missing}"
@@ -141,7 +153,10 @@ def test_matches_lists_played_matches_with_predictions(client: TestClient) -> No
 
 def test_matches_skips_unplayed_fixtures(client: TestClient, repo: FakeRepository) -> None:
     repo.matches = make_matches(match(8, "2026-27", date(2026, 9, 30), 1, 2, None, None))
-    ids = [m["match_id"] for m in client.get("/matches", params={"season": "2026-27"}).json()["matches"]]
+    ids = [
+        m["match_id"]
+        for m in client.get("/matches", params={"season": "2026-27"}).json()["matches"]
+    ]
     assert ids == [5, 6, 7]
 
 
@@ -188,7 +203,9 @@ def test_model_info(client: TestClient) -> None:
 
 
 @pytest.mark.parametrize("url", ["/predict?home=1&away=2", "/matches", "/model"])
-def test_model_endpoints_are_503_without_a_model(client_without_model: TestClient, url: str) -> None:
+def test_model_endpoints_are_503_without_a_model(
+    client_without_model: TestClient, url: str
+) -> None:
     r = client_without_model.get(url)
     assert r.status_code == 503
     assert "train_model" in r.json()["detail"]
@@ -214,7 +231,9 @@ def test_startup_loads_the_model_once(
     assert loads == [path]
 
 
-def test_startup_without_a_model_file_serves_503(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+def test_startup_without_a_model_file_serves_503(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
     monkeypatch.setenv("MODEL_PATH", str(tmp_path / "missing.joblib"))
     with TestClient(main.app) as c:
         assert c.get("/model").status_code == 503

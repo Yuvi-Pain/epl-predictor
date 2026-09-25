@@ -19,7 +19,9 @@ from app.match_model import (
 
 def test_one_hot_uses_outcome_order() -> None:
     assert OUTCOMES == ["A", "D", "H"]
-    np.testing.assert_array_equal(one_hot(pd.Series(["H", "A", "D"])), [[0, 0, 1], [1, 0, 0], [0, 1, 0]])
+    np.testing.assert_array_equal(
+        one_hot(pd.Series(["H", "A", "D"])), [[0, 0, 1], [1, 0, 0], [0, 1, 0]]
+    )
 
 
 def test_one_hot_rejects_unknown_labels() -> None:
@@ -56,7 +58,9 @@ def test_always_home_scores_like_the_home_win_rate() -> None:
 
 
 def test_base_rates_come_from_training_results() -> None:
-    np.testing.assert_allclose(base_rate_proba(pd.Series(["H", "H", "D", "A"]), 2), [[0.25, 0.25, 0.5]] * 2)
+    np.testing.assert_allclose(
+        base_rate_proba(pd.Series(["H", "H", "D", "A"]), 2), [[0.25, 0.25, 0.5]] * 2
+    )
 
 
 def test_pipeline_classes_and_probabilities() -> None:
