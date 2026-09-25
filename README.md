@@ -1,10 +1,13 @@
 # EPL Predictor
 
-Premier League match predictions from an Elo and form model, scored honestly against the bookmaker.
-
 [![CI](https://github.com/Yuvi-Pain/epl-predictor/actions/workflows/ci.yml/badge.svg)](https://github.com/Yuvi-Pain/epl-predictor/actions/workflows/ci.yml)
 
-**Live demo:** _TODO: add the link once it's deployed._
+Premier League match predictions from an Elo and form model, scored honestly against the bookmaker.
+
+- On the 2025-26 test season, which the model never saw in training or tuning, my v1 model's log loss was within 0.023 of Bet365's (1.041 against 1.019). The live v2 model is 0.033 behind.
+- A Redis cache cuts the median `/predict` response from about 155 ms to about 5 ms (200 requests each way, measured locally).
+- 210 backend and 48 frontend tests. GitHub Actions runs them on every pull request, along with ruff, mypy and a production build, with the database tests against a real Postgres.
+- Every prediction is saved before kickoff and can't be changed afterwards, and a shadow model is scored alongside the live one on the same matches.
 
 ![Fixtures page: the next matchweek with win, draw and loss probabilities for each match](docs/screenshots/fixtures.png)
 
@@ -19,15 +22,13 @@ Premier League match predictions from an Elo and form model, scored honestly aga
   </tr>
   <tr>
     <td><img src="docs/screenshots/model.png" alt="Model page: version, seasons and test scores against the bookmaker"></td>
-    <td><img src="docs/screenshots/track-record.png" alt="Track record page, before the first saved prediction"></td>
+    <td align="center"><img src="docs/screenshots/phone-fixtures.png" alt="Fixtures page at phone width" width="260"></td>
   </tr>
   <tr>
     <td align="center">Model</td>
-    <td align="center">Track record (empty until the first saved predictions are played)</td>
+    <td align="center">Fixtures on a phone</td>
   </tr>
 </table>
-
-<img src="docs/screenshots/phone-fixtures.png" alt="Fixtures page at phone width" width="260">
 
 ## What it does
 
@@ -36,15 +37,15 @@ I built a full-stack app that predicts home win, draw and away win probabilities
 ## Architecture
 
 ```mermaid
-flowchart LR
-    browser[Browser] --> frontend["Frontend<br/>React + Vite"]
-    frontend -->|"/api proxy"| backend["Backend<br/>FastAPI + model"]
+flowchart TB
+    browser[Browser] --> frontend[React frontend]
+    frontend -->|/api| backend[FastAPI backend]
+    backend -->|cache| redis[(Redis)]
     backend --> postgres[(Postgres)]
-    backend -->|response cache| redis[(Redis)]
 
-    worker["Worker<br/>scheduled jobs"] -->|fixtures| fdorg["football-data.org API"]
-    worker -->|results, shots, odds| fdcouk["football-data.co.uk CSVs"]
-    worker -->|"matches, frozen predictions"| postgres
+    fdorg[football-data.org] -->|fixtures| worker[Worker]
+    fdcouk[football-data.co.uk] -->|results, odds| worker
+    worker -->|matches, predictions| postgres
 ```
 
 Everything runs in Docker Compose. The backend and worker share one image; the worker refreshes fixtures every 6 hours, results daily, and saves predictions hourly for matches in the next 24 hours.
@@ -64,13 +65,13 @@ Both models clearly beat the naive baseline, and neither beats the bookmaker. Th
 
 ## Engineering decisions
 
-**Leak-free features, with a test that proves it.** Every feature for a match is built only from matches on earlier dates, not even other games on the same day. The leakage test rewrites or blanks every result from each date onward, rebuilds all features, and asserts that nothing up to that date changed. It also asserts that later features did change, so the test can't pass by altering nothing. To check the test itself, I switched the form merge to include same-day matches (a one-word change) and confirmed it fails.
+**A test proves the model never sees the result it is predicting.** Every feature for a match is built only from matches on earlier dates, not even other games on the same day. The leakage test rewrites or blanks every result from each date onward, rebuilds all features, and asserts that nothing up to that date changed. It also asserts that later features did change, so the test can't pass by altering nothing. To check the test itself, I switched the form merge to include same-day matches (a one-word change) and confirmed it fails.
 
-**No training/serving skew.** Live predictions don't have their own feature code. The API adds the hypothetical match to the history and runs the same `build_features` function used in training, and the Elo settings and form window are read from the saved model file, not from code defaults. The frontend's API types are generated from the backend's OpenAPI schema, so a response change that breaks the UI fails the type check.
+**Live predictions run the same feature code as training, so the two can't drift apart.** Live predictions don't have their own feature code. The API adds the hypothetical match to the history and runs the same `build_features` function used in training, and the Elo settings and form window are read from the saved model file, not from code defaults. The frontend's API types are generated from the backend's OpenAPI schema, so a response change that breaks the UI fails the type check.
 
-**Versioned cache keys and a circuit breaker.** Responses are cached in Redis with keys that include the model version and a data version counter. Every job that writes matches bumps that counter in the same transaction, so there is no invalidation code at all: new data means new keys, and stale entries just expire. If Redis goes down, the API keeps serving uncached responses and doesn't try Redis again for 30 seconds, so an outage doesn't add a connection timeout to every request.
+**The cache can't serve stale data, and a Redis outage doesn't slow the API down.** Responses are cached in Redis with keys that include the model version and a data version counter. Every job that writes matches bumps that counter in the same transaction, so there is no invalidation code at all: new data means new keys, and stale entries just expire. If Redis goes down, the API keeps serving uncached responses and doesn't try Redis again for 30 seconds, so an outage doesn't add a connection timeout to every request.
 
-**Frozen predictions and shadow mode.** The worker saves each model's prediction in the day before kickoff. Postgres stamps the time and only accepts the row if the match hasn't started, and a trigger rejects every update and delete on the table. The track record scores the live model, the shadow model and the bookmaker on exactly the same matches, so a new model can be proven on real fixtures before users see it.
+**Predictions are locked before kickoff, so the track record can't be rewritten after the result.** The worker saves each model's prediction in the day before kickoff. Postgres stamps the time and only accepts the row if the match hasn't started, and a trigger rejects every update and delete on the table. The track record scores the live model, the shadow model and the bookmaker on exactly the same matches, so a new model can be proven on real fixtures before users see it.
 
 ## Tech stack
 
