@@ -80,18 +80,24 @@ describe("ErrorState", () => {
 });
 
 describe("ThemeToggle", () => {
-  it("applies and remembers the chosen theme", async () => {
+  it("defaults to dark, and applies and remembers the chosen theme", async () => {
     const user = userEvent.setup();
     render(<ThemeToggle />);
-    await user.click(screen.getByRole("button", { name: "Dark theme" }));
-    expect(document.documentElement).toHaveAttribute("data-theme", "dark");
-    expect(localStorage.getItem("theme")).toBe("dark");
     expect(screen.getByRole("button", { name: "Dark theme" })).toHaveAttribute(
       "aria-pressed",
       "true",
     );
+    expect(document.documentElement).not.toHaveAttribute("data-theme");
+
+    await user.click(screen.getByRole("button", { name: "Light theme" }));
+    expect(document.documentElement).toHaveAttribute("data-theme", "light");
+    expect(localStorage.getItem("theme")).toBe("light");
 
     await user.click(screen.getByRole("button", { name: "Match system theme" }));
+    expect(document.documentElement).toHaveAttribute("data-theme", "system");
+    expect(localStorage.getItem("theme")).toBe("system");
+
+    await user.click(screen.getByRole("button", { name: "Dark theme" }));
     expect(document.documentElement).not.toHaveAttribute("data-theme");
     expect(localStorage.getItem("theme")).toBeNull();
   });
